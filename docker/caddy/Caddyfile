@@ -1,6 +1,13 @@
 :80 {
 	root * /var/www/app/public
 	encode zstd gzip
+
+	# The biggest legitimate request is the application form (a 20,000-character CV): anything
+	# over 1 MB is refused here with 413, before PHP has to parse it (it matches post_max_size).
+	request_body {
+		max_size 1MB
+	}
+
 	php_fastcgi php:9000
 	file_server
 }
