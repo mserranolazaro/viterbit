@@ -41,15 +41,24 @@ framework:
                     exchange: { name: ats.failed, type: fanout }
                     queues: { ats.failed: ~ }
 
-            sync: 'sync://'
 
-        routing: []
+        routing:
+            # Every domain event is consumed asynchronously by the worker.
+            'App\SharedKernel\Domain\Event\DomainEvent': events
+            'App\Recruitment\Application\Command\JobApplication\EnrichJobApplication\EnrichJobApplicationCommand': enrichment
+            # Anything else (submit, mark as failed, queries) is handled synchronously.
 
 when@test:
     framework:
         messenger:
-            # Everything runs inline so a functional test can follow the whole flow in one request.
+            # Messages stay queued in memory until a test runs the worker
+            # (see tests/IntegrationTestCase.php), so tests see the same asynchronous flow.
+            # Same number of attempts as above, without the delay.
             transports:
-                events: 'sync://'
-                enrichment: 'sync://'
+                events:
+                    dsn: 'in-memory://'
+                    retry_strategy: { max_retries: 3, delay: 0 }
+                enrichment:
+                    dsn: 'in-memory://'
+                    retry_strategy: { max_retries: 2, delay: 0 }
                 failed: 'in-memory://'
