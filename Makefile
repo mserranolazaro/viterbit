@@ -25,6 +25,9 @@ init: ## Build, start everything, install dependencies and load sample positions
 setup: ## Create MongoDB indexes, load the sample positions and build the CSS
 	$(PHP) bin/console app:mongo:setup
 	$(PHP) bin/console app:positions:seed
+	$(MAKE) --no-print-directory assets
+
+assets: ## Build the CSS (Tailwind standalone binary, no Node.js)
 	$(PHP) bin/console tailwind:build
 
 demo: ## Submit sample applications (enriched asynchronously by the worker)
@@ -45,7 +48,7 @@ logs: ## Follow the worker logs
 sh: ## Shell inside the PHP container
 	$(DC) exec php bash
 
-test: ## Run the whole test suite
+test: assets ## Run the whole test suite (pages render the built CSS)
 	$(PHP) vendor/bin/phpunit --no-coverage
 
 qa: ## Code style and static analysis
@@ -59,4 +62,4 @@ security: ## Fail if the PHP runtime is older than the last security release
 hooks: ## Install the git pre-commit hook
 	git config core.hooksPath resources/git/hooks
 
-.PHONY: help init setup demo css up down logs sh test qa security hooks
+.PHONY: help init setup assets demo css up down logs sh test qa security hooks
