@@ -234,3 +234,183 @@ tiempo sea determinista.
 **Estado entre fases.** Los puertos todavía no tienen adaptadores (llegan con la fase de
 infraestructura), así que en este punto el contenedor no compila y se ha quitado el test de
 arranque del kernel. Su función la asumen los tests de integración y funcionales.
+
+## ADR-009 · Solo MongoDB: una colección para escribir y otra para leer
+
+**Decisión.** Todo vive en MongoDB, en tres colecciones:
+
+| Colección | Modelo | Forma |
+|---|---|---|
+| `positions` | escritura | un documento por puesto, con los requisitos embebidos |
+| `job_applications` | escritura | un documento por agregado, con el enriquecimiento embebido |
+| `job_application_views` | lectura | plano, con el título del puesto copiado, un `searchText` en minúsculas e índices para el listado |
+
+**Por qué.**
+- CQRS separa *modelos*, no *motores*. El modelo de escritura lo dan las invariantes y el de
+  lectura lo da la página del listado. Dos colecciones enseñan esa separación igual de bien que
+  dos bases de datos.
+- Una candidatura es un documento natural: el candidato, el CV y el enriquecimiento se leen y se
+  escriben siempre juntos. No hacen falta joins.
+- Un solo motor supone un contenedor, un driver y ninguna migración de esquema.
+
+**Alternativas descartadas.**
+- *MySQL para el modelo de escritura (Doctrine ORM, como en los servicios del equipo) y MongoDB
+  para las vistas*: es un diseño válido de persistencia políglota, y el que mejor conozco. En un
+  PoC duplica la infraestructura (dos motores, dos librerías de mapeo, migraciones) sin cambiar
+  la arquitectura. Con una razón real, como informes relacionales o restricciones fuertes entre
+  agregados, es un cambio que se queda en los adaptadores de repositorio.
+- *Consultar directamente la colección de escritura para el listado*: es más simple, pero
+  entonces el modelo de escritura cargaría con cosas del listado (el título del puesto, campos
+  de búsqueda, índices del listado) y el CQRS se quedaría en el nombre.
+
+## ADR-010 · El driver oficial de MongoDB en lugar de Doctrine ODM
+
+**Decisión.** Usar `mongodb/mongodb` (la librería oficial) con mappers escritos a mano en cada
+repositorio. Los documentos vuelven como arrays planos (`typeMap`) y cada guardado sustituye el
+documento entero con `replaceOne(..., upsert)`. Los puertos se enlazan con sus adaptadores de
+forma explícita en `config/services.yaml`.
+
+**Por qué.**
+- El dominio sigue sin atributos de mapeo (ADR-006). El mapeo son unas 150 líneas para tres
+  colecciones, y es explícito: lo que se guarda es exactamente lo que se lee.
+- Los agregados se guardan enteros, así que el unit of work y el control de cambios del ODM no
+  aportan nada, y los proxies y la carga diferida solo ocultarían qué consultas se ejecutan.
+- Menos piezas que explicar y que actualizar.
+
+**Contrapartidas y detalles.**
+- Las fechas BSON tienen precisión de milisegundos y no tienen zona horaria. Se guardan en UTC,
+  y en el listado los empates dentro del mismo milisegundo se resuelven con el id UUID v7, que
+  está ordenado por tiempo.
+- No hay bloqueo optimista. Todas las transiciones son idempotentes y solo el worker modifica
+  una candidatura después del envío, así que aquí no es realista tener escritores concurrentes.
+  Si los hubiera, bastaría con añadir un campo `version` al filtro del `replaceOne`.
+
+**Alternativas descartadas.** *Doctrine MongoDB ODM* (5.6, compatible con Symfony 8): se parece
+más al ORM que usa el equipo, pero obligaría a poner atributos en el dominio o a usar mapeos en
+XML. Es más maquinaria de la que necesita el problema.
+
+## ADR-011 · Topología de mensajería y publicación de eventos
+
+**Decisión.**
+- Tres buses: `command.bus`, `query.bus` y `event.bus`. El último admite mensajes sin handlers,
+  porque un evento puede no tener todavía suscriptores.
+- `DomainEvent` (la interfaz) se enruta al transport `events`, y `EnrichJobApplicationCommand`
+  a `enrichment`. Cada uno tiene su propio exchange fanout y su cola en RabbitMQ. Todo lo demás
+  es síncrono.
+- El worker consume `events enrichment` en ese orden, para que las proyecciones no queden
+  bloqueadas detrás de llamadas lentas a la IA.
+- Los handlers publican *después* de guardar, a través del puerto `DomainEventPublisher`
+  (adaptador: `MessengerDomainEventPublisher`).
+- Los mensajes usan el serializador PHP por defecto de Messenger: estas colas son privadas de
+  esta aplicación.
+
+**Contrapartida: doble escritura.** Guardar en MongoDB y después publicar en RabbitMQ son dos
+escrituras sin una transacción que las englobe. Si el proceso muere entre ambas, la candidatura
+queda guardada pero su evento se pierde: se queda en `received` y sin vista. Se acepta en un
+PoC. La solución es el **outbox transaccional**: guardar los eventos en el mismo documento o
+transacción que el agregado y que un relay los publique. Mientras tanto, `app:views:rebuild`
+repara el modelo de lectura y reenviar `EnrichJobApplicationCommand` repara el enriquecimiento.
+
+**Alternativas descartadas.**
+- *Un serializador JSON con esquemas de eventos versionados*: es imprescindible en cuanto otros
+  servicios consuman estos eventos, no antes.
+- *Un solo transport para todo*: una llamada a la IA lenta o fallida retrasaría todas las
+  proyecciones que tuviera detrás.
+
+## ADR-012 · Reintentos y fallo definitivo
+
+**Decisión.**
+- `enrichment` tiene 3 intentos en total (reintentos a 1 s y después a 3 s). `events` tiene 4
+  intentos, empezando en 0,5 s y doblando.
+- Cuando falla el último intento de un enriquecimiento, el worker lanza
+  `WorkerMessageFailedEvent` con `willRetry() === false`. Un listener,
+  `MarkEnrichmentAsFailedOnFinalFailure`, despacha entonces `MarkEnrichmentAsFailed` con el
+  número de intentos y el motivo. La candidatura pasa a `failed` y la UI explica por qué.
+- El mensaje también se guarda en la cola `failed` (el failure transport de Messenger), donde se
+  puede inspeccionar con `messenger:failed:show`.
+
+**Por qué.** Solo el worker sabe si va a haber otro intento. Un handler que capturara su propia
+excepción tendría que adivinarlo, y o se rendiría demasiado pronto o nunca marcaría el fallo.
+
+**Límite conocido.** `messenger:failed:retry` sobre una candidatura que ya está en `failed` no
+cambia nada, porque los estados finales se respetan. Volver a enriquecer una candidatura fallida
+sería un caso de uso explícito (`failed → enriching`, por ejemplo desde un botón de
+«reintentar»). Queda apuntado como trabajo futuro.
+
+**Verificado de punta a punta** contra el RabbitMQ y el worker reales. Un CV con el marcador de
+fallo pasa a `enriching`, recibe 3 intentos en unos 4 s y termina en `failed` con «Enrichment
+failed after 3 attempt(s): The LLM answer does not match the schema…». Después, el mensaje
+queda en `ats.failed`.
+
+## ADR-013 · La IA detrás de un puerto, simulada como si fuera un LLM real
+
+**Decisión.** `CvAnalyzer` (puerto de dominio) lo implementa `PromptBasedCvAnalyzer`
+(infraestructura), que:
+
+1. rellena el prompt versionado `resources/prompts/cv_analysis.v1.md` con el puesto, sus
+   requisitos y el CV;
+2. lo envía mediante `LlmClient::complete(string): string`, el contrato mínimo que cumple
+   cualquier proveedor;
+3. quita las vallas de código Markdown (los modelos las añaden aunque se les diga que no),
+   decodifica el JSON y lo valida contra `cv_analysis.v1.schema.json` (JSON Schema 2020-12,
+   `opis/json-schema`);
+4. devuelve un `CvAnalysis` etiquetado con la versión del prompt, o lanza
+   `CvAnalysisFailedException`. Esa excepción es transitoria, así que el enriquecimiento se
+   reintenta (ADR-012).
+
+`SimulatedLlmClient` es el único `LlmClient`. Es **determinista** y lee **solo el prompt
+renderizado**, como haría un modelo real:
+- El *score* es la proporción ponderada de requisitos que aparecen en el CV: `[must]` pesa 3 y
+  `[nice]` pesa 1, con lo que sale `round(100 × encontrados / total)`. La coincidencia es por
+  palabra completa y sin distinguir mayúsculas, así que «Go» no coincide con «Google» pero «C++»
+  sí coincide.
+- El *resumen* es la primera línea del CV, qué requisitos cumple y cuáles le faltan, más los
+  años de experiencia si el CV los menciona.
+- Un CV que contenga `[simulate-llm-failure]` recibe una respuesta que no cumple el esquema.
+  Así es fácil enseñar en la demo los reintentos y el fallo.
+
+**Por qué.**
+- El modelo se trata como entrada no confiable. El contrato es el esquema, no las buenas
+  intenciones del prompt. Un modelo real puede devolver prosa, tipos incorrectos o campos de más,
+  y todo eso se rechaza y se reintenta.
+- *Prompts versionados*: cada score guardado registra qué prompt lo produjo. Cambiar el prompt
+  supone añadir `cv_analysis.v2.md` y su esquema, nunca editar un fichero al que apuntan
+  resultados ya guardados.
+- *Inyección de prompt*: el prompt indica al modelo que trate el CV como datos, y la simulación
+  lee el CV hasta la última etiqueta de cierre. Un CV no puede cerrar su propia sección ni
+  inventarse requisitos, y hay un test que lo comprueba.
+- Pasar a producción supone escribir una clase (un `LlmClient` HTTP para el proveedor elegido) y
+  cambiar un alias. El prompt, el esquema, la validación, los reintentos y los tests no cambian.
+
+**Alternativas descartadas.**
+- *Un `CvAnalyzer` falso que devuelva un score aleatorio o fijo*: se salta justo las partes que
+  fallan en producción (el prompt, el parseo y la validación), y los resultados aleatorios hacen
+  que los tests y las demos no sean fiables.
+- *Validar con código PHP en lugar de JSON Schema*: el esquema es un contrato independiente del
+  lenguaje, versionado junto al prompt, que se puede pasar a los proveedores que admiten salida
+  estructurada.
+
+## ADR-014 · Cómo probar un sistema asíncrono
+
+**Decisión.**
+- *Unitarios*: el dominio, los casos de uso con dobles de los puertos y los adaptadores de IA.
+- *Integración*: el MongoDB real (base de datos `ats_test`, que se borra antes de cada test) a
+  través del contenedor. En los tests, los transports asíncronos son `in-memory://`, y
+  `IntegrationTestCase::runWorker()` ejecuta un **`Worker` de Messenger real** sobre ellos hasta
+  vaciarlos. Ese worker tiene la estrategia de reintentos configurada y los mismos listeners de
+  eventos que producción.
+- Los reintentos en test mantienen el *número* de intentos de producción, pero sin *retardo*. El
+  transport en memoria respeta los retardos, así que si no el worker se quedaría inactivo antes
+  de que tocara el reintento.
+
+**Por qué.** Un test puede comprobar lo que es cierto *entre* un paso y otro, que es donde viven
+los bugs asíncronos. Tras el envío, el evento está en cola y todavía no hay vista. Tras pasar el
+worker, la vista está enriquecida. Un enriquecimiento que falla deja exactamente 3 intentos y 1
+mensaje en el failure transport. Un comando reenviado no cambia nada.
+
+**Alternativas descartadas.** *Transports `sync://` en los tests*, el plan inicial: es más
+simple, pero un enriquecimiento fallido saltaría hasta la llamada de envío (sin reintentos y sin
+el listener de fallo definitivo), y los tests cubrirían un flujo que nunca se da en producción.
+
+**Consecuencia para la UI.** El modelo de lectura tiene consistencia eventual: durante unos
+milisegundos después del envío todavía no hay vista. Las páginas tienen que contemplarlo (fase de UI).

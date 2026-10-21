@@ -219,3 +219,172 @@ publisher records the published events. `MockClock` makes time deterministic.
 **State between phases.** The ports have no adapters yet (they come with the infrastructure
 phase), so the container does not compile at this point and the kernel smoke test was
 removed. Its role is taken over by the integration and functional tests.
+
+## ADR-009 · MongoDB only: one collection for writes, another for reads
+
+**Decision.** Everything lives in MongoDB, in three collections:
+
+| Collection | Model | Shape |
+|---|---|---|
+| `positions` | write | one document per position, requirements embedded |
+| `job_applications` | write | one document per aggregate, enrichment embedded |
+| `job_application_views` | read | flat, the position title copied in, a lower-cased `searchText`, indexes for the list |
+
+**Why.**
+- CQRS separates *models*, not *engines*. The write model is shaped by invariants and the read
+  model by the list page. Two collections show that split as clearly as two databases do.
+- A job application is a natural document: the candidate, the CV and the enrichment are always
+  read and written together. No joins are needed.
+- One engine means one container, one driver and no schema migrations.
+
+**Alternatives discarded.**
+- *MySQL for the write model (Doctrine ORM, as in the team's services), MongoDB for the views*:
+  a valid polyglot-persistence design, and the most familiar to me. For a PoC it doubles the
+  infrastructure (two engines, two mapping libraries, migrations) without changing the
+  architecture. With a real reason, such as relational reporting or strong cross-aggregate
+  constraints, it is a change confined to the repository adapters.
+- *Querying the write collection directly for the list*: simpler, but then the write model
+  would have to carry list concerns (the position title, search fields, list indexes) and CQRS
+  would be in name only.
+
+## ADR-010 · The official MongoDB driver instead of Doctrine ODM
+
+**Decision.** Use `mongodb/mongodb` (the official library) with hand-written mappers in each
+repository. Documents come back as plain arrays (`typeMap`), and every save is a whole-document
+`replaceOne(..., upsert)`. Ports are bound to adapters explicitly in `config/services.yaml`.
+
+**Why.**
+- The domain stays free of mapping attributes (ADR-006). The mapping is about 150 lines for
+  three collections, and it is explicit: what is stored is exactly what you read.
+- Aggregates are saved whole, so the ODM's unit of work and change tracking bring nothing, and
+  proxies and lazy loading would only hide what queries run.
+- Fewer moving parts to explain and upgrade.
+
+**Trade-offs and details.**
+- BSON dates have millisecond precision and no time zone. Dates are stored in UTC, and the list
+  breaks same-millisecond ties with the UUID v7 id, which is time-ordered.
+- No optimistic locking. Every transition is idempotent and only the worker changes an
+  application after submission, so concurrent writers are not a realistic case here. With
+  several writers, a `version` field in the `replaceOne` filter would add it.
+
+**Alternatives discarded.** *Doctrine MongoDB ODM* (5.6, compatible with Symfony 8): closer to
+the ORM the team uses, but it would either put attributes on the domain or need XML mappings.
+That is more machinery than the problem needs.
+
+## ADR-011 · Messaging topology and publishing events
+
+**Decision.**
+- Three buses: `command.bus`, `query.bus` and `event.bus`. The last allows messages without
+  handlers, because an event may have no subscribers yet.
+- `DomainEvent` (the interface) is routed to the `events` transport, and
+  `EnrichJobApplicationCommand` to `enrichment`. Each has its own fanout exchange and queue in
+  RabbitMQ. Anything else is synchronous.
+- The worker consumes `events enrichment` in that order, so projections are not stuck behind
+  slow AI calls.
+- Handlers publish *after* saving, through the `DomainEventPublisher` port (adapter:
+  `MessengerDomainEventPublisher`).
+- Messages use Messenger's default PHP serializer: these queues are private to this application.
+
+**Trade-off: dual write.** Saving to MongoDB and then publishing to RabbitMQ are two writes with
+no transaction around them. If the process dies between them, the application is stored but its
+event is lost: it stays `received` with no view. Accepted for a PoC. The fix is the
+**transactional outbox**: store events in the same document or transaction as the aggregate,
+and have a relay publish them. Meanwhile, `app:views:rebuild` repairs the read model, and
+re-sending `EnrichJobApplicationCommand` repairs the enrichment.
+
+**Alternatives discarded.**
+- *A JSON serializer with versioned event schemas*: required as soon as other services consume
+  these events, not before.
+- *One transport for everything*: one slow or failing AI call would delay every projection
+  behind it.
+
+## ADR-012 · Retries and the final failure
+
+**Decision.**
+- `enrichment` gets 3 attempts in total (retries after 1 s and then 3 s). `events` gets 4
+  attempts, starting at 0.5 s and doubling.
+- When the last attempt of an enrichment fails, the worker dispatches `WorkerMessageFailedEvent`
+  with `willRetry() === false`. A listener, `MarkEnrichmentAsFailedOnFinalFailure`, then
+  dispatches `MarkEnrichmentAsFailed` with the attempt count and the reason. The application
+  becomes `failed`, and the UI says why.
+- The message is also kept in the `failed` queue (Messenger's failure transport), where it can be
+  inspected with `messenger:failed:show`.
+
+**Why.** Only the worker knows whether another attempt is coming. A handler that caught its own
+exception would have to guess, and would either give up too early or never mark the failure.
+
+**Known limit.** `messenger:failed:retry` on an application that is already `failed` changes
+nothing, because final statuses are respected. Re-enriching a failed application would be an
+explicit use case (`failed → enriching`, for example from a "retry" button). It is listed for
+future work.
+
+**Verified end to end** against the real RabbitMQ and worker. A CV with the failure marker
+goes `enriching`, gets 3 attempts in about 4 s and ends `failed` with
+"Enrichment failed after 3 attempt(s): The LLM answer does not match the schema…". The
+message then sits in `ats.failed`.
+
+## ADR-013 · The AI behind a port, simulated as if it were a real LLM
+
+**Decision.** `CvAnalyzer` (domain port) is implemented by `PromptBasedCvAnalyzer`
+(infrastructure), which:
+
+1. renders the versioned prompt `resources/prompts/cv_analysis.v1.md` with the position, its
+   requirements and the CV;
+2. sends it through `LlmClient::complete(string): string`, the smallest contract any provider meets;
+3. strips Markdown code fences (models add them even when told not to), decodes the JSON and
+   validates it against `cv_analysis.v1.schema.json` (JSON Schema 2020-12, `opis/json-schema`);
+4. returns a `CvAnalysis` tagged with the prompt version, or throws `CvAnalysisFailedException`.
+   That exception is transient, so the enrichment is retried (ADR-012).
+
+`SimulatedLlmClient` is the only `LlmClient`. It is **deterministic** and reads **only the
+rendered prompt**, as a real model would:
+- *Score* is the weighted share of requirements found in the CV: `[must]` weighs 3 and `[nice]`
+  weighs 1, giving `round(100 × matched / total)`. Matching is whole-word and case-insensitive,
+  so "Go" does not match "Google" while "C++" still matches.
+- *Summary* is the CV's first line, which requirements it meets and which it misses, plus the
+  years of experience if the CV mentions them.
+- A CV containing `[simulate-llm-failure]` gets a schema-invalid answer. This makes the retry
+  and failure path easy to demo.
+
+**Why.**
+- The model is treated as untrusted input. The schema is the contract, not the prompt's good
+  intentions. A real model can return prose, wrong types or extra fields, and all of these are
+  rejected and retried.
+- *Versioned prompts*: each stored score records which prompt produced it. Changing the prompt
+  means adding `cv_analysis.v2.md` and its schema, never editing a file that results point to.
+- *Prompt injection*: the prompt tells the model to treat the CV as data, and the simulation
+  reads the CV up to the last closing tag. A CV cannot close its own section or forge
+  requirements, and there is a test for this.
+- Going live means writing one class (an HTTP `LlmClient` for the chosen provider) and changing
+  one alias. The prompt, schema, validation, retries and tests stay the same.
+
+**Alternatives discarded.**
+- *A fake `CvAnalyzer` that returns a random or fixed score*: it skips the parts that break in
+  production (prompting, parsing and validation), and random results make tests and demos
+  unreliable.
+- *Validating with PHP code instead of JSON Schema*: the schema is a language-neutral contract
+  that is versioned next to the prompt and can be given to providers that support structured output.
+
+## ADR-014 · Testing an asynchronous system
+
+**Decision.**
+- *Unit*: the domain, the use cases with doubles of the ports, and the AI adapters.
+- *Integration*: the real MongoDB (database `ats_test`, dropped before each test) through the
+  container. The asynchronous transports are `in-memory://` in tests, and
+  `IntegrationTestCase::runWorker()` runs a **real Messenger `Worker`** over them until they
+  are empty. That worker has the configured retry strategy and the same event listeners as
+  production.
+- Retries in tests keep the production *number* of attempts with no *delay*. The in-memory
+  transport respects delays, so the worker would otherwise go idle before a retry is due.
+
+**Why.** A test can assert what is true *between* the steps, which is where asynchronous bugs
+live. After submitting, the event is queued and there is no view yet. After the worker runs,
+the view is enriched. A failing enrichment leaves exactly 3 attempts and 1 message in the
+failure transport. A redelivered command changes nothing.
+
+**Alternatives discarded.** *`sync://` transports in tests*, the original plan: simpler, but a
+failing enrichment would bubble up into the submit call (no retries, no final-failure
+listener), and the tests would cover a flow that never runs in production.
+
+**Consequence for the UI.** The read model is eventually consistent: for a few milliseconds
+after submitting, there is no view yet. The pages have to cope with that (UI phase).
