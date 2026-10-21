@@ -61,7 +61,8 @@
 </div>
 
 <div class="toasts" aria-live="polite">
-    {% for type, messages in app.flashes %}
+    {# Reading flashes starts a session: only do it for visitors who already have one. #}
+    {% for type, messages in app.request.hasPreviousSession ? app.flashes : [] %}
         {% for message in messages %}
             <div class="alert alert--{{ type }}" data-autodismiss>
                 {{ ui.icon(type == 'success' ? 'check_circle' : 'info') }}

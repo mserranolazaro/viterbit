@@ -90,6 +90,23 @@ final class BrowseApplicationsTest extends FunctionalTestCase
         self::assertSame('enriched', $crawler->filter('#status option[selected]')->attr('value'));
     }
 
+    public function testBrowsingApplicationsDoesNotStartASession(): void
+    {
+        $this->submitSampleApplications();
+        self::runWorker();
+        $this->client->getCookieJar()->clear();
+
+        $crawler = $this->client->request('GET', '/applications');
+        self::assertFalse($this->sessionWasStarted());
+        $this->client->click($crawler->filter('a.entry')->link());
+        self::assertResponseIsSuccessful();
+        self::assertFalse($this->sessionWasStarted());
+
+        // Control: the application form does need a session (CSRF token), and the check sees it.
+        $this->client->request('GET', '/positions/' . SeedPositionsCommand::BACKEND_ENGINEER_ID);
+        self::assertTrue($this->sessionWasStarted());
+    }
+
     public function testAnUnknownApplicationIsNotFound(): void
     {
         $this->client->request('GET', '/applications/019a0a20-0000-7000-8000-0000000000ff');
@@ -116,6 +133,14 @@ final class BrowseApplicationsTest extends FunctionalTestCase
         } finally {
             Clock::set(new NativeClock());
         }
+    }
+
+    /**
+     * Symfony marks every response that used the session as non-cacheable (must-revalidate).
+     */
+    private function sessionWasStarted(): bool
+    {
+        return str_contains((string) $this->client->getResponse()->headers->get('Cache-Control'), 'must-revalidate');
     }
 
     /**

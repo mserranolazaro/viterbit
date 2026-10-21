@@ -16,16 +16,19 @@ final class ShowJobApplicationController extends UiController
     public function __invoke(string $id, Request $request): Response
     {
         $application = $this->query(new GetJobApplicationQuery($id));
-        $session = $request->getSession();
+        // Only look at the session if the visitor already has one: reading it would start one
+        // (and set a cookie) for every recruiter opening an application.
+        $session = $request->hasPreviousSession() ? $request->getSession() : null;
+        $justSubmitted = $session?->get(SubmitJobApplicationController::JUST_SUBMITTED);
 
         if ($application === null) {
             // Right after submitting, the view may not be projected yet (eventual consistency):
             // the candidate who just applied gets a "being filed" state; anyone else a 404.
-            if ($session->get(SubmitJobApplicationController::JUST_SUBMITTED) !== strtolower($id)) {
+            if ($justSubmitted !== strtolower($id)) {
                 throw $this->createNotFoundException('Application not found.');
             }
-        } elseif ($session->get(SubmitJobApplicationController::JUST_SUBMITTED) === $application->id) {
-            $session->remove(SubmitJobApplicationController::JUST_SUBMITTED);
+        } elseif ($justSubmitted === $application->id) {
+            $session?->remove(SubmitJobApplicationController::JUST_SUBMITTED);
         }
 
         $template = $this->isFragmentRequest($request)
