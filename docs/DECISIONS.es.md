@@ -5,6 +5,14 @@
 Cada entrada recoge una decisión, las alternativas valoradas y por qué se descartaron.
 La versión en inglés es la canónica; esta se actualiza en el mismo commit.
 
+**Índice**
+
+- *Plataforma:* 001 Stack y entorno local autocontenido · 002 Symfony 8.1 en lugar de 8.0 · 003 MongoDB 7.0 en el entorno local · 004 Seguimiento de releases de seguridad de PHP (php2shell, 21-10-2026)
+- *Dominio:* 005 Un único bounded context, `Recruitment`, y el nombre `JobApplication` · 006 Un dominio puro: invariantes, una sola máquina de estados y el tiempo inyectado · 007 Eventos ligeros y una proyección que relee el agregado
+- *Aplicación:* 008 Casos de uso: comandos, queries y el flujo de enriquecimiento
+- *Infraestructura:* 009 Solo MongoDB: una colección para escribir y otra para leer · 010 El driver oficial de MongoDB en lugar de Doctrine ODM · 011 Topología de mensajería y publicación de eventos · 012 Reintentos y fallo definitivo · 013 La IA detrás de un puerto, simulada como si fuera un LLM real
+- *Calidad y UI:* 014 Cómo probar un sistema asíncrono · 015 UI: páginas renderizadas en servidor que se actualizan en el sitio
+
 ---
 
 ## ADR-001 · Stack y entorno local autocontenido
@@ -234,9 +242,6 @@ puertos, como en los servicios del equipo: mocks cuando la interacción es lo qu
 stubs en el resto. Un publisher espía registra los eventos publicados y `MockClock` hace que el
 tiempo sea determinista.
 
-**Estado entre fases.** Los puertos todavía no tienen adaptadores (llegan con la fase de
-infraestructura), así que en este punto el contenedor no compila y se ha quitado el test de
-arranque del kernel. Su función la asumen los tests de integración y funcionales.
 
 ## ADR-009 · Solo MongoDB: una colección para escribir y otra para leer
 
@@ -274,8 +279,8 @@ documento entero con `replaceOne(..., upsert)`. Los puertos se enlazan con sus a
 forma explícita en `config/services.yaml`.
 
 **Por qué.**
-- El dominio sigue sin atributos de mapeo (ADR-006). El mapeo son unas 150 líneas para tres
-  colecciones, y es explícito: lo que se guarda es exactamente lo que se lee.
+- El dominio sigue sin atributos de mapeo (ADR-006). El mapeo son un par de cientos de líneas
+  para tres colecciones, y es explícito: lo que se guarda es exactamente lo que se lee.
 - Los agregados se guardan enteros, así que el unit of work y el control de cambios del ODM no
   aportan nada, y los proxies y la carga diferida solo ocultarían qué consultas se ejecutan.
 - Menos piezas que explicar y que actualizar.

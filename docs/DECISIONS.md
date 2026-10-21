@@ -5,6 +5,14 @@
 Each entry records a decision, the alternatives considered and why they were discarded.
 The English version is canonical; the Spanish one is updated in the same commit.
 
+**Index**
+
+- *Platform:* 001 Stack and a self-contained local environment · 002 Symfony 8.1 instead of 8.0 · 003 MongoDB 7.0 in the local environment · 004 Tracking PHP security releases (php2shell, 21 Oct 2026)
+- *Domain:* 005 One bounded context, `Recruitment`, and the name `JobApplication` · 006 A pure domain: invariants, a single state machine and injected time · 007 Lean events, and a projection that re-reads the aggregate
+- *Application:* 008 Use cases: commands, queries and the enrichment flow
+- *Infrastructure:* 009 MongoDB only: one collection for writes, another for reads · 010 The official MongoDB driver instead of Doctrine ODM · 011 Messaging topology and publishing events · 012 Retries and the final failure · 013 The AI behind a port, simulated as if it were a real LLM
+- *Quality and UI:* 014 Testing an asynchronous system · 015 UI: server-rendered pages that update in place
+
 ---
 
 ## ADR-001 · Stack and a self-contained local environment
@@ -219,9 +227,6 @@ after the last retry ──▶ MarkEnrichmentAsFailed ──▶ EnrichmentHasFai
 team's services: mocks where the interaction is the assertion, stubs otherwise. A small spy
 publisher records the published events. `MockClock` makes time deterministic.
 
-**State between phases.** The ports have no adapters yet (they come with the infrastructure
-phase), so the container does not compile at this point and the kernel smoke test was
-removed. Its role is taken over by the integration and functional tests.
 
 ## ADR-009 · MongoDB only: one collection for writes, another for reads
 
@@ -257,8 +262,8 @@ repository. Documents come back as plain arrays (`typeMap`), and every save is a
 `replaceOne(..., upsert)`. Ports are bound to adapters explicitly in `config/services.yaml`.
 
 **Why.**
-- The domain stays free of mapping attributes (ADR-006). The mapping is about 150 lines for
-  three collections, and it is explicit: what is stored is exactly what you read.
+- The domain stays free of mapping attributes (ADR-006). The mapping is a couple of hundred
+  lines for three collections, and it is explicit: what is stored is exactly what you read.
 - Aggregates are saved whole, so the ODM's unit of work and change tracking bring nothing, and
   proxies and lazy loading would only hide what queries run.
 - Fewer moving parts to explain and upgrade.
