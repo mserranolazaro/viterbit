@@ -45,14 +45,15 @@ final class SimulatedLlmClient implements LlmClient
         $matchedWeight = $totalWeight = 0;
 
         foreach ($requirements as [$level, $skill]) {
-            $weight = $level === 'must' ? self::MUST_WEIGHT : self::NICE_WEIGHT;
+            $group = $level === 'must' ? 'must' : 'nice';
+            $weight = $group === 'must' ? self::MUST_WEIGHT : self::NICE_WEIGHT;
             $totalWeight += $weight;
 
             if ($this->mentions($cv, $skill)) {
-                $matched[$level][] = $skill;
+                $matched[$group][] = $skill;
                 $matchedWeight += $weight;
             } else {
-                $missing[$level][] = $skill;
+                $missing[$group][] = $skill;
             }
         }
 
@@ -148,10 +149,9 @@ final class SimulatedLlmClient implements LlmClient
 
     private function yearsOfExperience(string $cv): ?int
     {
-        if (preg_match_all('/\b(\d{1,2})\+?\s*(?:years?|yrs?)\b/i', $cv, $matches) === 0) {
-            return null;
-        }
+        preg_match_all('/\b(\d{1,2})\+?\s*(?:years?|yrs?)\b/i', $cv, $matches);
+        $years = array_map('intval', $matches[1]);
 
-        return max(array_map('intval', $matches[1]));
+        return $years === [] ? null : max($years);
     }
 }

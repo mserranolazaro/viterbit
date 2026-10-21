@@ -24,11 +24,11 @@ final class SecurityHeadersTest extends FunctionalTestCase
         $policy = (string) $this->client->getResponse()->headers->get('Content-Security-Policy');
         self::assertMatchesRegularExpression("/script-src 'self' 'nonce-([A-Za-z0-9+\\/=]+)'/", $policy);
         self::assertStringContainsString("frame-ancestors 'none'", $policy);
-        preg_match("/'nonce-([^']+)'/", $policy, $match);
+        self::assertSame(1, preg_match("/'nonce-([^']+)'/", $policy, $match));
 
         $nonces = $crawler->filter('script')->each(static fn ($script): ?string => $script->attr('nonce'));
         self::assertNotEmpty($nonces);
-        self::assertSame([$match[1]], array_values(array_unique($nonces)));
+        self::assertSame([$match[1] ?? null], array_values(array_unique($nonces)));
     }
 
     public function testTheImportmapHasNoDataModulesThePolicyWouldBlock(): void

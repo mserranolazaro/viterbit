@@ -21,6 +21,7 @@ final class RebuildJobApplicationViewsCommandTest extends IntegrationTestCase
         $jobApplication = JobApplicationMother::received($position->id());
         self::service(JobApplicationRepository::class)->save($jobApplication);
 
+        self::assertNotNull(self::$kernel);
         $tester = new CommandTester(new Application(self::$kernel)->find('app:views:rebuild'));
         $tester->execute([]);
 
