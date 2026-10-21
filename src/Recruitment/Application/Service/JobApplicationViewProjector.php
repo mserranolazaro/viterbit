@@ -60,6 +60,8 @@ final class JobApplicationViewProjector
             updatedAt: $jobApplication->updatedAt(),
             enrichedAt: $enrichment?->enrichedAt,
             version: $jobApplication->version(),
+            matchedSkills: $enrichment->matchedSkills ?? [],
+            missingSkills: $enrichment->missingSkills ?? [],
         );
     }
 }

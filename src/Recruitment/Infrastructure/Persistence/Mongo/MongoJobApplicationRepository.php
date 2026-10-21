@@ -15,6 +15,7 @@ use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Score;
 use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
 use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
 use App\SharedKernel\Infrastructure\Mongo\MongoDates;
+use MongoDB\BSON\UTCDateTime;
 use MongoDB\Collection;
 use MongoDB\Database;
 
@@ -84,6 +85,8 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
                 'score' => $enrichment->score->value(),
                 'promptVersion' => $enrichment->promptVersion,
                 'enrichedAt' => MongoDates::toBson($enrichment->enrichedAt),
+                'matchedSkills' => $enrichment->matchedSkills,
+                'missingSkills' => $enrichment->missingSkills,
             ],
             'failureReason' => $jobApplication->failureReason(),
             'version' => $jobApplication->version(),
@@ -97,7 +100,7 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
     {
         /** @var array{fullName: string, email: string, phone: ?string} $candidate */
         $candidate = $document['candidate'];
-        /** @var array{summary: string, score: int, promptVersion: string, enrichedAt: \MongoDB\BSON\UTCDateTime}|null $enrichment */
+        /** @var array{summary: string, score: int, promptVersion: string, enrichedAt: UTCDateTime, matchedSkills?: string[], missingSkills?: string[]}|null $enrichment */
         $enrichment = $document['enrichment'];
 
         return JobApplication::reconstitute(
@@ -114,6 +117,8 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
                 Score::fromInt($enrichment['score']),
                 $enrichment['promptVersion'],
                 MongoDates::fromBson($enrichment['enrichedAt']),
+                $enrichment['matchedSkills'] ?? [],
+                $enrichment['missingSkills'] ?? [],
             ),
             $document['failureReason'],
             // Documents written before versioning existed are read as their first version.

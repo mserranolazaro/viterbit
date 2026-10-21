@@ -35,9 +35,25 @@
                     {% if application.status == 'enriched' %}
                         <div class="flex flex-col gap-5 sm:flex-row sm:items-center">
                             {{ ui.score_ring(application.score) }}
-                            <div class="grid gap-1">
-                                <p class="text-[12px] font-extrabold uppercase tracking-[.08em] text-subtle">Summary</p>
-                                <p class="text-[15.5px] leading-relaxed">{{ application.summary }}</p>
+                            <div class="grid gap-3">
+                                <div class="grid gap-1">
+                                    <p class="text-[12px] font-extrabold uppercase tracking-[.08em] text-subtle">Summary</p>
+                                    <p class="text-[15.5px] leading-relaxed">{{ application.summary }}</p>
+                                </div>
+                                {% if application.matchedSkills is not empty %}
+                                    <div class="flex flex-wrap items-center gap-1.5" aria-label="Requirements met">
+                                        {% for skill in application.matchedSkills %}
+                                            <span class="chip chip--positive">{{ ui.icon('check_circle') }} {{ skill }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                                {% if application.missingSkills is not empty %}
+                                    <div class="flex flex-wrap items-center gap-1.5" aria-label="Requirements missing">
+                                        {% for skill in application.missingSkills %}
+                                            <span class="chip chip--outline">{{ ui.icon('close') }} {{ skill }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
                             </div>
                         </div>
                     {% elseif application.status == 'failed' %}

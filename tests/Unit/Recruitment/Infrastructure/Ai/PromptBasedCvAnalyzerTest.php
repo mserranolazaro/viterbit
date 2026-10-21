@@ -94,6 +94,8 @@ final class PromptBasedCvAnalyzerTest extends TestCase
             ->analyze(CvText::fromString("PHP engineer\nMongoDB in production."), JobApplicationMother::position());
 
         self::assertSame(100, $analysis->score->value());
+        self::assertSame(['PHP', 'MongoDB'], $analysis->matchedSkills);
+        self::assertSame([], $analysis->missingSkills);
         self::assertSame('PHP engineer. Meets 1 of 1 must-have requirements (PHP), plus MongoDB.', $analysis->summary);
     }
 

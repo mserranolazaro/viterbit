@@ -23,7 +23,7 @@ final class JobApplicationViewProjectorTest extends TestCase
         $jobApplication = JobApplicationMother::enriching();
         $enrichedAt = new \DateTimeImmutable('2026-10-21 10:00:09');
         $jobApplication->completeEnrichment(
-            new CvAnalysis('Senior PHP developer.', Score::fromInt(88), 'cv_analysis.v1'),
+            new CvAnalysis('Senior PHP developer.', Score::fromInt(88), 'cv_analysis.v1', ['PHP'], ['MongoDB']),
             $enrichedAt,
         );
 
@@ -43,6 +43,8 @@ final class JobApplicationViewProjectorTest extends TestCase
         self::assertEquals($jobApplication->appliedAt(), $view->appliedAt);
         self::assertSame('ada lovelace ada@example.com', $view->searchText);
         self::assertSame(3, $view->version);
+        self::assertSame(['PHP'], $view->matchedSkills);
+        self::assertSame(['MongoDB'], $view->missingSkills);
     }
 
     public function testItProjectsAReceivedApplicationWithoutEnrichment(): void

@@ -57,11 +57,17 @@ final class PromptBasedCvAnalyzer implements CvAnalyzer
 
         $output = $this->decode($answer);
 
-        return new CvAnalysis($output['summary'], Score::fromInt($output['score']), $this->prompt->version);
+        return new CvAnalysis(
+            $output['summary'],
+            Score::fromInt($output['score']),
+            $this->prompt->version,
+            $output['matched_skills'],
+            $output['missing_skills'],
+        );
     }
 
     /**
-     * @return array{summary: string, score: int}
+     * @return array{summary: string, score: int, matched_skills: string[], missing_skills: string[]}
      */
     private function decode(string $answer): array
     {
@@ -83,7 +89,7 @@ final class PromptBasedCvAnalyzer implements CvAnalyzer
             );
         }
 
-        /** @var array{summary: string, score: int} */
+        /** @var array{summary: string, score: int, matched_skills: string[], missing_skills: string[]} */
         return json_decode($json, true, 32, JSON_THROW_ON_ERROR);
     }
 }

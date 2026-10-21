@@ -48,7 +48,7 @@ final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
         $repository->save($jobApplication);
 
         $jobApplication->completeEnrichment(
-            new CvAnalysis('Senior PHP developer.', Score::fromInt(91), 'cv_analysis.v1'),
+            new CvAnalysis('Senior PHP developer.', Score::fromInt(91), 'cv_analysis.v1', ['PHP'], ['DDD']),
             new \DateTimeImmutable('2026-10-21 10:00:07.123'),
         );
         $repository->save($jobApplication);
@@ -57,6 +57,8 @@ final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
         self::assertSame(JobApplicationStatus::Enriched, $found?->status());
         self::assertSame(91, $found->enrichment()?->score->value());
         self::assertSame('cv_analysis.v1', $found->enrichment()->promptVersion);
+        self::assertSame(['PHP'], $found->enrichment()->matchedSkills);
+        self::assertSame(['DDD'], $found->enrichment()->missingSkills);
         self::assertSame('2026-10-21 10:00:07.123', $found->enrichment()->enrichedAt->format('Y-m-d H:i:s.v'));
         self::assertCount(1, iterator_to_array($repository->all()));
     }

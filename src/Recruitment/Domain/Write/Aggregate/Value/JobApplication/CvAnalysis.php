@@ -11,14 +11,29 @@ namespace App\Recruitment\Domain\Write\Aggregate\Value\JobApplication;
 final readonly class CvAnalysis
 {
     public string $summary;
+    /** @var string[] */
+    public array $matchedSkills;
+    /** @var string[] */
+    public array $missingSkills;
 
-    public function __construct(string $summary, public Score $score, public string $promptVersion)
-    {
+    /**
+     * @param string[] $matchedSkills Requirements the CV shows
+     * @param string[] $missingSkills Requirements the CV does not show
+     */
+    public function __construct(
+        string $summary,
+        public Score $score,
+        public string $promptVersion,
+        array $matchedSkills = [],
+        array $missingSkills = [],
+    ) {
         $summary = trim($summary);
         if ($summary === '') {
             throw new \InvalidArgumentException('A CV analysis needs a summary.');
         }
 
         $this->summary = $summary;
+        $this->matchedSkills = array_values($matchedSkills);
+        $this->missingSkills = array_values($missingSkills);
     }
 }

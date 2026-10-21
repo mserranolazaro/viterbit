@@ -12,6 +12,10 @@ final readonly class JobApplicationView
 {
     public string $searchText;
 
+    /**
+     * @param string[] $matchedSkills
+     * @param string[] $missingSkills
+     */
     public function __construct(
         public string $id,
         public string $positionId,
@@ -30,6 +34,8 @@ final readonly class JobApplicationView
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $enrichedAt,
         public int $version,
+        public array $matchedSkills = [],
+        public array $missingSkills = [],
     ) {
         $this->searchText = mb_strtolower($candidateName . ' ' . $email);
     }

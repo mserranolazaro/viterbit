@@ -141,6 +141,8 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
             'enrichedAt' => $view->enrichedAt === null ? null : MongoDates::toBson($view->enrichedAt),
             'searchText' => $view->searchText,
             'version' => $view->version,
+            'matchedSkills' => $view->matchedSkills,
+            'missingSkills' => $view->missingSkills,
         ];
     }
 
@@ -168,6 +170,8 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
             enrichedAt: MongoDates::fromNullableBson($document['enrichedAt']),
             // Views written before versioning existed; app:views:rebuild refreshes them.
             version: $document['version'] ?? 0,
+            matchedSkills: $document['matchedSkills'] ?? [],
+            missingSkills: $document['missingSkills'] ?? [],
         );
     }
 }

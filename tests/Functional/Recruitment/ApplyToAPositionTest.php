@@ -52,6 +52,9 @@ final class ApplyToAPositionTest extends FunctionalTestCase
         self::assertSame('92', $crawler->filter('.ring__value')->text());
         self::assertSelectorTextContains('main', 'Meets 3 of 3 must-have requirements');
         self::assertSelectorTextContains('main', 'cv_analysis.v1');
+        $met = ['PHP', 'Symfony', 'MongoDB', 'RabbitMQ', 'Docker'];
+        self::assertSame($met, $this->chips($crawler, 'Requirements met'));
+        self::assertSame(['DDD'], $this->chips($crawler, 'Requirements missing'));
         self::assertSelectorTextContains('.cv-text', '10 years of PHP, Symfony and MongoDB.');
         self::assertSelectorTextContains('main', 'Available in November');
         self::assertSelectorNotExists('[data-pending]');
@@ -132,6 +135,22 @@ final class ApplyToAPositionTest extends FunctionalTestCase
         self::assertResponseStatusCodeSame(429);
         self::assertSelectorTextContains('[role="alert"]', 'Too many applications from your network');
         self::assertCount(5, self::transport('events')->getSent());
+    }
+
+    /**
+     * Skill chips in a group, without the text of their (decorative) icon.
+     *
+     * @return string[]
+     */
+    private function chips(Crawler $crawler, string $group): array
+    {
+        return $crawler->filter(sprintf('[aria-label="%s"] .chip', $group))->each(
+            static function (Crawler $chip): string {
+                $icon = $chip->filter('.material-symbols-rounded')->text();
+
+                return trim(str_replace($icon, '', $chip->text()));
+            },
+        );
     }
 
     /**
