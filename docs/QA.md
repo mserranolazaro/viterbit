@@ -35,6 +35,8 @@ issue found was fixed, and each fix comes with a test that fails without it.
 | 8 | Low | `?page=abc`, oversized pages or array parameters answered **400**, although malformed filters are meant to be ignored. | Every filter is read leniently; anything unreadable is ignored. | `BrowseApplicationsTest` (data provider) |
 | 9 | Low | A page past the end said "No applications yet" when there were applications. | It says the page is past the end and links back to the first page. | `BrowseApplicationsTest` |
 | 10 | Low | Control characters (`\x01`, ANSI escapes) were stored in CVs. | Removed when normalising (tabs and line breaks are kept). | `TextTest` |
+| 11 | Medium | *Found in the final review:* when enrichment falls behind, the reconciler re-queued every waiting application every minute, flooding the queue it was meant to drain. | Each application is re-driven at most once per window, in batches of 100. | `ReconcileJobApplicationsHandlerTest`, `MongoJobApplicationRepositoryTest` |
+| 12 | Low | *Found in the final review:* browsers asked for `/favicon.ico` (logged as 404 errors), and Caddy, MongoDB and RabbitMQ ran on floating tags. | A static `/favicon.svg`, and every image pinned to an exact version. | Acceptance run: 0 favicon 404s |
 
 ## What held up
 
@@ -58,7 +60,7 @@ issue found was fixed, and each fix comes with a test that fails without it.
 | Suite | Runs | Count |
 |---|---|---|
 | Unit | domain, use cases with doubles of the ports, AI adapter, listeners | |
-| Integration | real MongoDB, real Messenger worker over in-memory transports, console commands | 184 in total (`make test`) |
+| Integration | real MongoDB, real Messenger worker over in-memory transports, console commands | 186 in total (`make test`) |
 | Functional | HTTP flows through the kernel, CSRF included | |
 | Acceptance | a real Chrome (Selenium) against the running stack: workers, RabbitMQ, JavaScript | 6 (`make acceptance`) |
 

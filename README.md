@@ -145,7 +145,7 @@ The ones most worth discussing:
 
 ## Tests
 
-**184 tests** in the default suite (`make test`), plus **6 acceptance tests** in a real browser (`make acceptance`):
+**186 tests** in the default suite (`make test`), plus **6 acceptance tests** in a real browser (`make acceptance`):
 - *Unit:* the domain, the use cases with doubles of the ports, the AI adapter and the listeners.
 - *Integration:* real MongoDB, the full asynchronous flow with a real Messenger worker, and the
   console commands.
@@ -212,7 +212,7 @@ infrastructure, UI and docs.
   - accessibility noise from polling;
   - and smaller polish.
 - **QA:** a QA pass tried to break the app (HTTP abuse, edge inputs, the browser, the broker
-  going down) and found 10 issues, the worst being a 500 and an orphaned application when
-  RabbitMQ was down. All 10 were fixed with regression tests, and a browser acceptance suite and
+  going down) and found 10 issues (and the final review two more), the worst being a 500 and an orphaned application when
+  RabbitMQ was down. All of them were fixed with regression tests, and a browser acceptance suite and
   a coverage gate were added (docs/QA.md).
 - **Docs:** `docs/DECISIONS.md` was written alongside the code, one entry per decision.

@@ -146,7 +146,7 @@ Las que más dan para hablar:
 
 ## Tests
 
-**184 tests** en la suite por defecto (`make test`), más **6 tests de aceptación** en un navegador real (`make acceptance`):
+**186 tests** en la suite por defecto (`make test`), más **6 tests de aceptación** en un navegador real (`make acceptance`):
 - *Unitarios:* el dominio, los casos de uso con dobles de los puertos, el adaptador de IA y los
   listeners.
 - *Integración:* MongoDB real, el flujo asíncrono completo con un worker real de Messenger y los
@@ -214,7 +214,7 @@ infraestructura, UI y documentación.
   - el polling generaba ruido de accesibilidad;
   - y pulidos menores.
 - **QA:** una pasada de QA intentó romper la app (abuso por HTTP, entradas extremas, el navegador,
-  la caída del broker) y encontró 10 fallos; el peor, un 500 y una candidatura huérfana con
-  RabbitMQ caído. Se arreglaron los 10 con tests de regresión, y se añadieron una suite de
+  la caída del broker) y encontró 10 fallos (y la revisión final, dos más); el peor, un 500 y una candidatura huérfana con
+  RabbitMQ caído. Se arreglaron todos con tests de regresión, y se añadieron una suite de
   aceptación en navegador y un control de cobertura (docs/QA.es.md).
 - **Documentación:** `docs/DECISIONS.es.md` se escribió a la vez que el código, una entrada por decisión.

@@ -23,7 +23,9 @@ Todo corre en Docker Compose: `php` (FPM), `caddy` (servidor web), dos workers d
 (`worker-events` y `worker-enrichment`, ver ADR-011), `mongo` y `rabbitmq`. `make init` construye
 las imágenes, instala dependencias, prepara los recursos y arranca los workers al final, cuando
 el código que ejecutan ya está instalado. CI ejecuta exactamente `make init`, `make security`,
-`make qa` y `make test`, así que el camino del revisor es el que está probado.
+`make qa`, `make coverage` y `make acceptance`, así que el camino del revisor es el que está
+probado. Todas las imágenes están fijadas en una versión exacta (PHP 8.4.27, Caddy 2.11.2, MongoDB
+7.0.45, RabbitMQ 4.4.0 y Selenium).
 
 **Por qué.** Es el stack con el que trabaja el equipo, así que el ejercicio enseña cómo
 trabajaría en su código real y no en un stack elegido para ahorrar esfuerzo. Con un solo
@@ -399,6 +401,17 @@ estaba guardada, y se quedaba huérfana. Lo resuelven dos cambios:
   son idempotentes. Comprobado en vivo: una candidatura enviada con RabbitMQ parado pasó sola a
   `enriched` unos 2 minutos después de que volviera el broker.
 
+**El reconciliador no debe inundar una cola que simplemente va lenta.** Si el enriquecimiento va más
+de 2 minutos por detrás (un LLM lento, una ráfaga de candidaturas), todas las candidaturas en espera
+parecen «atascadas». Dos límites impiden que el reconciliador agrave el retraso que pretende
+resolver:
+- *Una ventana:* cada candidatura se reconduce como mucho una vez por ventana. Una marca
+  `redrivenAt` se guarda fuera del agregado, y el siguiente cambio real la elimina.
+- *Un tamaño de lote:* cada ejecución trata como mucho 100 candidaturas.
+
+Un duplicado que aun así se cuele cuesta un hueco en la cola, no un análisis: cuando se procesa, la
+candidatura ya es final y se ignora.
+
 Un outbox transaccional seguiría siendo la solución completa (entrega garantizada e inmediata). El
 reconciliador es la red de seguridad barata, que además cubre cualquier otro mensaje perdido.
 
@@ -546,7 +559,7 @@ excluido.
   queries y comandos.
 - **El filtrado en tiempo real y el progreso usan fragmentos HTML.** Las URLs del listado y del
   detalle devuelven la página completa, o solo la parte que cambia cuando la petición lleva
-  `X-Requested-With: fetch`. De eso se encargan unas 170 líneas de JS vanilla
+  `X-Requested-With: fetch`. De eso se encargan unas 200 líneas de JS vanilla
   (`assets/js/live.js`):
   - los filtros recargan los resultados 250 ms después de escribir (al momento en los select);
   - un `AbortController` cancela las peticiones antiguas, para que los resultados nunca lleguen
@@ -586,7 +599,7 @@ excluido.
   la opción en Symfony). En un PoC, un polling cada 2 s que se detiene cuando no queda nada
   pendiente es más simple y no necesita infraestructura extra. Queda apuntado como trabajo futuro.
 - *Symfony UX Turbo/Stimulus*: harían lo mismo con menos JS propio, pero añaden un framework que
-  aprender para unas 170 líneas de código.
+  aprender para unas 200 líneas de código.
 
 **Fuera de alcance:** autenticación y roles (las páginas de candidato y de recruiter están
 abiertas), internacionalización (la UI está en inglés) y subida de ficheros (prohibida por el

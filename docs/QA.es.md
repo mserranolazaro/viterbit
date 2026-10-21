@@ -35,6 +35,8 @@ problema encontrado se corrigió, y cada arreglo viene con un test que falla sin
 | 8 | Baja | `?page=abc`, páginas desmesuradas o parámetros en forma de array respondían **400**, aunque se supone que los filtros mal formados se ignoran. | Todos los filtros se leen de forma tolerante; lo que no se puede leer se ignora. | `BrowseApplicationsTest` (data provider) |
 | 9 | Baja | Una página más allá del final decía «No applications yet» cuando sí había candidaturas. | Ahora dice que la página está más allá del final y enlaza a la primera. | `BrowseApplicationsTest` |
 | 10 | Baja | Los CVs guardaban caracteres de control (`\x01`, secuencias ANSI). | Se eliminan al normalizar (los tabuladores y los saltos de línea se conservan). | `TextTest` |
+| 11 | Media | *Encontrado en la revisión final:* cuando el enriquecimiento iba con retraso, el reconciliador volvía a encolar cada minuto todas las candidaturas en espera, inundando la cola que debía vaciar. | Cada candidatura se reconduce como mucho una vez por ventana, en lotes de 100. | `ReconcileJobApplicationsHandlerTest`, `MongoJobApplicationRepositoryTest` |
+| 12 | Baja | *Encontrado en la revisión final:* los navegadores pedían `/favicon.ico` (registrado en el log como error 404), y Caddy, MongoDB y RabbitMQ usaban etiquetas flotantes. | Un `/favicon.svg` estático y todas las imágenes fijadas en una versión exacta. | Ejecución de aceptación: 0 errores 404 del favicon |
 
 ## Lo que aguantó
 
@@ -58,7 +60,7 @@ problema encontrado se corrigió, y cada arreglo viene con un test que falla sin
 | Suite | Qué ejecuta | Número |
 |---|---|---|
 | Unitarios | dominio, casos de uso con dobles de los puertos, adaptador de IA y listeners | |
-| Integración | MongoDB real, un worker real de Messenger sobre transports en memoria y los comandos de consola | 184 en total (`make test`) |
+| Integración | MongoDB real, un worker real de Messenger sobre transports en memoria y los comandos de consola | 186 en total (`make test`) |
 | Funcionales | flujos HTTP a través del kernel, con CSRF incluido | |
 | Aceptación | un Chrome real (Selenium) contra el stack en marcha: workers, RabbitMQ y JavaScript | 6 (`make acceptance`) |
 

@@ -22,8 +22,9 @@ The English version is canonical; the Spanish one is updated in the same commit.
 Everything runs in Docker Compose: `php` (FPM), `caddy` (web server), two Messenger workers
 (`worker-events`, `worker-enrichment`, see ADR-011), `mongo` and `rabbitmq`. `make init` builds
 the images, installs dependencies, prepares runtime resources and starts the workers last, once
-the code they run is installed. CI runs exactly `make init`, `make security`, `make qa` and
-`make test`, so the reviewer's path is the tested one.
+the code they run is installed. CI runs exactly `make init`, `make security`, `make qa`,
+`make coverage` and `make acceptance`, so the reviewer's path is the tested one. Every image is
+pinned to an exact version (PHP 8.4.27, Caddy 2.11.2, MongoDB 7.0.45, RabbitMQ 4.4.0, Selenium).
 
 **Why.** It is the stack the team works with, so the exercise shows how I would work on the
 real codebase rather than in a stack chosen to minimise effort. One command and no host
@@ -379,6 +380,16 @@ then left orphaned. Two changes fix it:
   Verified live: an application submitted with RabbitMQ stopped became `enriched` on its own
   about 2 minutes after the broker came back.
 
+**The reconciler must not flood a queue that is merely slow.** If enrichment falls more than
+2 minutes behind (a slow LLM, a burst of applications), every waiting application looks "stuck".
+Two limits stop the reconciler from adding to the backlog it is meant to fix:
+- *A window:* an application is re-driven at most once per window. A `redrivenAt` marker is kept
+  outside the aggregate, and the next real change drops it.
+- *A batch size:* each run handles at most 100 applications.
+
+A duplicate that still slips in costs a queue slot, not an analysis: by the time it is handled,
+the application is final and it is skipped.
+
 A transactional outbox would still be the complete solution (guaranteed, immediate
 delivery). The reconciler is the cheap safety net that also covers any other lost message.
 
@@ -514,7 +525,7 @@ branches, listed in `docs/QA.md`. Framework bootstrap (`Kernel.php`) is excluded
   invokable class per route (the team's convention) that only dispatches queries and commands.
 - **Real-time filtering and progress use HTML fragments.** The list and detail URLs return the
   full page, or only the part that changes when the request carries `X-Requested-With: fetch`.
-  About 170 lines of vanilla JS (`assets/js/live.js`) handle this:
+  About 200 lines of vanilla JS (`assets/js/live.js`) handle this:
   - filters reload the results 250 ms after typing (immediately for selects);
   - an `AbortController` cancels stale requests, so results never arrive out of order;
   - `history.replaceState` keeps the URL shareable;
@@ -551,7 +562,7 @@ branches, listed in `docs/QA.md`. Framework bootstrap (`Kernel.php`) is excluded
   would be the Symfony choice). For a PoC, a 2 s poll that stops when nothing is pending is
   simpler and has no extra infrastructure. It is listed for future work.
 - *Symfony UX Turbo/Stimulus*: they would do the same with less custom JS, but they add a
-  framework to learn for about 170 lines of code.
+  framework to learn for about 200 lines of code.
 
 **Not in scope:** authentication and roles (the candidate and recruiter pages are open),
 internationalisation (the UI is English), and file uploads (forbidden by the exercise).
