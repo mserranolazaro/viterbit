@@ -1,5 +1,7 @@
 name: viterbit-ats
 
+# Every image is pinned to an exact version, like PHP (ADR-004): upgrades are deliberate diffs.
+
 x-php: &php
   build:
     context: docker/php
@@ -40,7 +42,7 @@ services:
     profiles: [worker]
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.2-alpine
     ports:
       - '8080:80'
     volumes:
@@ -51,7 +53,7 @@ services:
 
   mongo:
     # 8.x/9.0 refuse to start on Linux kernels 6.19–7.0.13 (current Docker Desktop); see docs/DECISIONS.md.
-    image: mongo:7.0
+    image: mongo:7.0.45
     ports:
       - '27018:27017'
     volumes:
@@ -63,7 +65,7 @@ services:
       retries: 20
 
   rabbitmq:
-    image: rabbitmq:4-management-alpine
+    image: rabbitmq:4.4.0-management-alpine
     ports:
       - '15673:15672'
     healthcheck:
