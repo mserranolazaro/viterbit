@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:viterbit-ats:prompts:cv_analysis.v1",
+  "title": "CV analysis (prompt cv_analysis.v1)",
+  "type": "object",
+  "required": ["summary", "score", "matched_skills", "missing_skills"],
+  "additionalProperties": false,
+  "properties": {
+    "summary": { "type": "string", "minLength": 1, "maxLength": 600 },
+    "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "matched_skills": { "type": "array", "items": { "type": "string" } },
+    "missing_skills": { "type": "array", "items": { "type": "string" } }
+  }
+}
