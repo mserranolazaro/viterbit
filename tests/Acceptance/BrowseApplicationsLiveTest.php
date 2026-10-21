@@ -27,9 +27,9 @@ final class BrowseApplicationsLiveTest extends AcceptanceTestCase
 
         // Typing filters as you go, newest first; the URL follows so it can be shared.
         $this->browser->getCrawler()->filter('#q')->sendKeys($this->runId);
-        $this->waitForText('#results [data-live-summary]', '2 applications');
+        $this->waitForLiveResults('q=' . $this->runId);
+        self::assertSame('2 applications', $this->resultCount());
         self::assertSame([$second, $first], $this->listedNames());
-        self::assertStringContainsString('q=' . $this->runId, $this->browser->getCurrentURL());
 
         // Filtering by position narrows it down in place.
         $this->browser->executeScript(sprintf(<<<'JS'
@@ -37,7 +37,8 @@ final class BrowseApplicationsLiveTest extends AcceptanceTestCase
             select.value = '%s';
             select.dispatchEvent(new Event('input', {bubbles: true}));
             JS, SeedPositionsCommand::PRODUCT_DESIGNER_ID));
-        $this->waitForText('#results [data-live-summary]', '1 application');
+        $this->waitForLiveResults('position=' . SeedPositionsCommand::PRODUCT_DESIGNER_ID);
+        self::assertSame('1 application', $this->resultCount());
         self::assertSame([$second], $this->listedNames());
         self::assertTrue($this->browser->executeScript('return window.__sameDocument === true;'));
 
@@ -62,7 +63,16 @@ final class BrowseApplicationsLiveTest extends AcceptanceTestCase
 
         $this->browser->executeScript('window.fetch = window.__fetch;');
         $this->browser->getCrawler()->filter('[data-live-retry]')->click();
-        $this->browser->waitForStaleness('[data-live-error]', 30);
-        self::assertCount(0, $this->browser->getCrawler()->filter('[data-live-error]'));
+
+        // However fast the retry is, the message must end up gone and the request finished.
+        $this->waitUntil(
+            '!document.querySelector("[data-live-error]") && !document.querySelector("#results[aria-busy]")',
+        );
+        self::assertStringContainsString('status=failed', $this->browser->getCurrentURL());
+    }
+
+    private function resultCount(): string
+    {
+        return $this->browser->getCrawler()->filter('#results [data-live-summary]')->text();
     }
 }

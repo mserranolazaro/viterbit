@@ -102,6 +102,29 @@ abstract class AcceptanceTestCase extends TestCase
     }
 
     /**
+     * Waits for a condition evaluated in the page (a JavaScript expression), so tests wait for
+     * the state they need rather than for something that may already be true by coincidence.
+     */
+    protected function waitUntil(string $expression): void
+    {
+        $this->browser->wait(self::TIMEOUT_SECONDS)->until(
+            fn (): bool => (bool) $this->browser->executeScript('return Boolean(' . $expression . ');'),
+        );
+    }
+
+    /**
+     * After typing or picking a filter: the URL carries it and the results request has finished.
+     * Waiting on the visible count alone is not enough: it can already match before filtering.
+     */
+    protected function waitForLiveResults(string $expectedInUrl): void
+    {
+        $this->waitUntil(sprintf(
+            'location.href.includes(%s) && !document.querySelector("#results[aria-busy]")',
+            json_encode($expectedInUrl, JSON_THROW_ON_ERROR),
+        ));
+    }
+
+    /**
      * @return string[] Candidate names currently listed
      */
     protected function listedNames(): array
