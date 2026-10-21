@@ -28,10 +28,16 @@ interface JobApplicationRepository
     public function all(): iterable;
 
     /**
-     * Applications still received or enriching whose last change is older than $before:
-     * an enrichment that should have finished by now.
+     * Applications still received or enriching whose last change, and last re-drive, are older
+     * than $before: an enrichment that should have finished by now. Oldest first, at most $limit.
      *
      * @return iterable<JobApplication>
      */
-    public function findUnfinishedSince(\DateTimeImmutable $before): iterable;
+    public function findUnfinishedSince(\DateTimeImmutable $before, int $limit): iterable;
+
+    /**
+     * Records that the reconciler re-drove it, so it waits a whole window before the next one.
+     * Forgotten as soon as the application changes (the next save replaces the document).
+     */
+    public function markRedriven(JobApplicationId $id, \DateTimeImmutable $at): void;
 }

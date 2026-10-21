@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Recruitment\Infrastructure\Persistence\Mongo;
 
+use App\Recruitment\Domain\Write\Aggregate\Root\JobApplication\JobApplication;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\CvAnalysis;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationId;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationStatus;
@@ -118,7 +119,7 @@ final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
             $repository->save($jobApplication);
         }
 
-        $found = iterator_to_array($repository->findUnfinishedSince(new \DateTimeImmutable('2026-10-21 11:58')), false);
+        $found = $this->unfinished('2026-10-21 11:58', 10);
 
         self::assertEqualsCanonicalizing(
             [$oldReceived->id()->value(), $oldEnriching->id()->value()],
@@ -126,8 +127,54 @@ final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
         );
     }
 
+    public function testARedrivenApplicationWaitsAWholeWindowAndForgetsItOnTheNextChange(): void
+    {
+        $repository = self::service(JobApplicationRepository::class);
+        $stuck = JobApplicationMother::received(appliedAt: new \DateTimeImmutable('2026-10-21 09:00'));
+        $repository->save($stuck);
+
+        $repository->markRedriven($stuck->id(), new \DateTimeImmutable('2026-10-21 12:00'));
+
+        self::assertSame([], $this->unfinished('2026-10-21 11:58', 10));
+        self::assertCount(1, $this->unfinished('2026-10-21 12:01', 10));
+
+        $repository->save($stuck);
+        $raw = self::service(Database::class)->selectCollection(MongoJobApplicationRepository::COLLECTION)
+            ->findOne(['_id' => $stuck->id()->value()]);
+        self::assertIsArray($raw);
+        self::assertArrayNotHasKey('redrivenAt', $raw);
+    }
+
+    public function testItReturnsAtMostTheRequestedNumberOldestFirst(): void
+    {
+        $repository = self::service(JobApplicationRepository::class);
+        foreach (['09:03', '09:01', '09:02'] as $i => $time) {
+            $repository->save(JobApplicationMother::received(
+                email: sprintf('c%d@example.com', $i),
+                appliedAt: new \DateTimeImmutable('2026-10-21 ' . $time),
+            ));
+        }
+
+        $found = $this->unfinished('2026-10-21 11:58', 2);
+
+        self::assertSame(
+            ['09:01', '09:02'],
+            array_map(static fn ($jobApplication): string => $jobApplication->updatedAt()->format('H:i'), $found),
+        );
+    }
+
     public function testItReturnsNullForAnUnknownId(): void
     {
         self::assertNull(self::service(JobApplicationRepository::class)->findById(JobApplicationId::generate()));
+    }
+
+    /**
+     * @return JobApplication[]
+     */
+    private function unfinished(string $before, int $limit): array
+    {
+        $repository = self::service(JobApplicationRepository::class);
+
+        return iterator_to_array($repository->findUnfinishedSince(new \DateTimeImmutable($before), $limit), false);
     }
 }

@@ -9,6 +9,7 @@ use App\Recruitment\Application\Command\JobApplication\ReconcileJobApplications\
 use App\Recruitment\Application\Command\JobApplication\ReconcileJobApplications\ReconcileJobApplicationsHandler;
 use App\Recruitment\Application\Service\JobApplicationViewProjector;
 use App\Recruitment\Domain\Read\JobApplicationView;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationId;
 use App\Recruitment\Domain\Read\JobApplicationViewRepository;
 use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
 use App\Recruitment\Domain\Write\Repository\PositionRepository;
@@ -25,15 +26,23 @@ final class ReconcileJobApplicationsHandlerTest extends TestCase
     {
         $stuck = [JobApplicationMother::received(), JobApplicationMother::enriching()];
         $before = null;
+        $limit = null;
+        $marked = [];
         $applications = $this->createStub(JobApplicationRepository::class);
         $applications->method('findUnfinishedSince')->willReturnCallback(
-            static function (\DateTimeImmutable $since) use (&$before, $stuck): array {
+            static function (\DateTimeImmutable $since, int $batch) use (&$before, &$limit, $stuck): array {
                 $before = $since;
+                $limit = $batch;
 
                 return $stuck;
             },
         );
         $applications->method('findById')->willReturnOnConsecutiveCalls(...$stuck);
+        $applications->method('markRedriven')->willReturnCallback(
+            static function (JobApplicationId $id, \DateTimeImmutable $at) use (&$marked): void {
+                $marked[] = $id->value() . '@' . $at->format('H:i');
+            },
+        );
 
         $projected = [];
         $views = $this->createStub(JobApplicationViewRepository::class);
@@ -63,6 +72,8 @@ final class ReconcileJobApplicationsHandlerTest extends TestCase
         self::assertSame($ids, $projected);
         self::assertSame($ids, $requested);
         self::assertSame('2026-10-21 11:58:00', $before?->format('Y-m-d H:i:s'));
+        self::assertSame(ReconcileJobApplicationsCommand::BATCH_SIZE, $limit);
+        self::assertSame(array_map(static fn (string $id): string => $id . '@12:00', $ids), $marked);
     }
 
     public function testItDoesNothingWhenNothingIsStuck(): void

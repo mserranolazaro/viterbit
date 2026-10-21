@@ -95,17 +95,26 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
         }
     }
 
-    public function findUnfinishedSince(\DateTimeImmutable $before): iterable
+    public function findUnfinishedSince(\DateTimeImmutable $before, int $limit): iterable
     {
+        $cutoff = MongoDates::toBson($before);
         $filter = [
             'status' => ['$in' => [JobApplicationStatus::Received->value, JobApplicationStatus::Enriching->value]],
-            'updatedAt' => ['$lt' => MongoDates::toBson($before)],
+            'updatedAt' => ['$lt' => $cutoff],
+            '$or' => [['redrivenAt' => ['$exists' => false]], ['redrivenAt' => ['$lt' => $cutoff]]],
         ];
 
         /** @var array<string, mixed> $document */
-        foreach ($this->collection->find($filter, ['sort' => ['updatedAt' => 1]]) as $document) {
+        foreach ($this->collection->find($filter, ['sort' => ['updatedAt' => 1], 'limit' => $limit]) as $document) {
             yield $this->toJobApplication($document);
         }
+    }
+
+    public function markRedriven(JobApplicationId $id, \DateTimeImmutable $at): void
+    {
+        // Bookkeeping outside the aggregate: toDocument() does not write it, so it goes away
+        // with the next real change.
+        $this->collection->updateOne(['_id' => $id->value()], ['$set' => ['redrivenAt' => MongoDates::toBson($at)]]);
     }
 
     /**
