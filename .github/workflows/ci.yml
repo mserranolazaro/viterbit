@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  qa-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The container runs as uid 1000; the runner checks out as another user.
+      - name: Make the checkout writable for the container user
+        run: chmod -R a+rwX .
+
+      - name: Build and start the stack
+        run: |
+          docker compose build
+          docker compose up -d php mongo rabbitmq
+
+      - name: Install dependencies
+        run: docker compose exec -T php composer install --no-interaction --no-progress
+
+      - name: Code quality
+        run: docker compose exec -T php composer qa
+
+      - name: Tests
+        run: docker compose exec -T php composer test
