@@ -19,11 +19,6 @@ final class CspNonce implements ResetInterface
         return $this->nonce ??= base64_encode(random_bytes(18));
     }
 
-    public function isUsed(): bool
-    {
-        return $this->nonce !== null;
-    }
-
     public function reset(): void
     {
         $this->nonce = null;

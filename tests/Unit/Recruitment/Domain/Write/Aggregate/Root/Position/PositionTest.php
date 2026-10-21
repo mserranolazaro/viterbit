@@ -28,6 +28,20 @@ final class PositionTest extends TestCase
         self::assertFalse($position->requirements()[1]->isMandatory());
     }
 
+    public function testItNeedsATitle(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        Position::create(PositionId::generate(), '  ', '', 'Remote', [new Requirement('PHP', RequirementLevel::Must)]);
+    }
+
+    public function testARequirementNeedsASkill(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new Requirement(' ', RequirementLevel::Nice);
+    }
+
     public function testItNeedsRequirementsToScoreAgainst(): void
     {
         $this->expectException(\InvalidArgumentException::class);

@@ -76,6 +76,14 @@ final class PromptBasedCvAnalyzerTest extends TestCase
         $this->analyzeWithAnswer($answer);
     }
 
+    public function testAMissingPromptFileFailsLoudlyAtStartup(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('cannot be read');
+
+        new PromptBasedCvAnalyzer($this->createStub(LlmClient::class), '/nope/cv_analysis.v9.md', self::SCHEMA);
+    }
+
     public function testItReportsAFailedRequestAsAFailedAnalysis(): void
     {
         $llm = $this->createStub(LlmClient::class);

@@ -100,6 +100,8 @@ final class JobApplicationTest extends TestCase
         $events = $jobApplication->pullDomainEvents();
         self::assertCount(1, $events);
         self::assertInstanceOf(JobApplicationEnrichmentWasStarted::class, $events[0]);
+        self::assertEquals($later, $events[0]->occurredOn());
+        self::assertSame($jobApplication->id()->value(), $events[0]->aggregateId());
     }
 
     public function testItIgnoresStartingAnEnrichmentAlreadyInProgress(): void
@@ -134,6 +136,7 @@ final class JobApplicationTest extends TestCase
         self::assertCount(1, $events);
         self::assertInstanceOf(JobApplicationWasEnriched::class, $events[0]);
         self::assertSame(82, $events[0]->score);
+        self::assertEquals($later, $events[0]->occurredOn());
     }
 
     public function testItCannotCompleteAnEnrichmentThatWasNotStarted(): void
@@ -158,6 +161,7 @@ final class JobApplicationTest extends TestCase
         self::assertCount(1, $events);
         self::assertInstanceOf(JobApplicationEnrichmentHasFailed::class, $events[0]);
         self::assertSame('LLM output did not match the schema', $events[0]->reason);
+        self::assertEquals($this->now->modify('+9 seconds'), $events[0]->occurredOn());
     }
 
     public function testItCanFailBeforeTheEnrichmentStarts(): void

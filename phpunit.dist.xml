@@ -38,6 +38,10 @@
         <include>
             <directory>src</directory>
         </include>
+        <exclude>
+            <!-- Framework bootstrap, no behaviour of ours. -->
+            <file>src/Kernel.php</file>
+        </exclude>
 
         <deprecationTrigger>
             <function>trigger_deprecation</function>
