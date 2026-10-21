@@ -77,6 +77,7 @@ final class EnrichJobApplicationHandlerTest extends TestCase
         $this->handler($jobApplication, $analyzer)(new EnrichJobApplicationCommand($jobApplication->id()->value()));
 
         self::assertSame([JobApplicationWasEnriched::class], $this->publisher->publishedClasses());
+        self::assertSame([JobApplicationStatus::Enriched], $this->savedStatuses, 'No write for the no-op restart.');
     }
 
     public function testItIgnoresAnApplicationThatIsAlreadyEnriched(): void

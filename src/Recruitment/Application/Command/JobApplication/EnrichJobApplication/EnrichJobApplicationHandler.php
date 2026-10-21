@@ -58,8 +58,12 @@ final class EnrichJobApplicationHandler
         }
 
         // Saved before calling the AI so the UI shows "enriching" while the analysis runs.
+        // On a retry it is already enriching: nothing changed, nothing to write.
+        $versionBefore = $jobApplication->version();
         $jobApplication->startEnrichment($this->clock->now());
-        $this->saveAndPublish($jobApplication);
+        if ($jobApplication->version() !== $versionBefore) {
+            $this->saveAndPublish($jobApplication);
+        }
 
         $analysis = $this->cvAnalyzer->analyze($jobApplication->cvText(), $position);
 
