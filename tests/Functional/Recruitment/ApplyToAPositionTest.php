@@ -104,7 +104,8 @@ final class ApplyToAPositionTest extends FunctionalTestCase
         $this->client->request('GET', $detailUrl);
 
         self::assertSelectorTextContains('.page-header', 'Failed');
-        self::assertSelectorTextContains('[role="alert"]', 'Enrichment failed after 3 attempt(s)');
+        self::assertSelectorTextContains('[role="alert"]', 'This CV could not be screened automatically.');
+        self::assertSelectorTextContains('[role="alert"] details', 'Enrichment failed after 3 attempt(s)');
     }
 
     public function testItCannotApplyWithoutAcceptingThePrivacyNotice(): void

@@ -44,8 +44,13 @@
                         <div class="alert alert--error" role="alert">
                             {{ ui.icon('error') }}
                             <div class="alert__text">
-                                <p class="font-bold">The AI could not screen this CV.</p>
-                                <p class="mt-1">{{ application.failureReason }}</p>
+                                <p class="font-bold">This CV could not be screened automatically.</p>
+                                <p class="mt-1">Review it manually below; nothing is lost.</p>
+                                {# The technical reason helps support, not recruiters: kept, but out of the way. #}
+                                <details class="mt-2 text-[13px]">
+                                    <summary class="cursor-pointer font-semibold">Technical details</summary>
+                                    <p class="mt-1 opacity-80">{{ application.failureReason }}</p>
+                                </details>
                             </div>
                         </div>
                     {% else %}
