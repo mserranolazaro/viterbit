@@ -580,11 +580,11 @@ excluido.
   formulario. Token CSRF basado en sesión.
 - **Caché.** Las respuestas envían `Vary: X-Requested-With`, para que al volver atrás el navegador
   nunca sirva un fragmento cacheado como página completa (ni al revés).
-- **Aspecto: el tema finance de bvsoft sobre Tailwind v4.**
-  - Los tokens `--bv-*` (primario navy, acento ocre, claro y oscuro con `prefers-color-scheme`)
+- **Aspecto: un sistema de diseño propio sobre Tailwind v4.**
+  - Los tokens `--ats-*` (primario navy, acento ocre, claro y oscuro con `prefers-color-scheme`)
     se mapean en `@theme inline`, así que utilidades como `bg-surface` o `text-muted` siguen el
     tema.
-  - Los componentes de bvsoft (`.card`, `.btn`, `.chip`, `.field`, `.entry`, `.empty-state`, rail
+  - Los componentes (`.card`, `.btn`, `.chip`, `.field`, `.entry`, `.empty-state`, rail
     y tab bar) se han portado a `@layer components`.
   - Tailwind se ejecuta como **binario standalone** (`symfonycasts/tailwind-bundle`, fijado en la
     v4.3.3) a través de AssetMapper y un importmap: sin Node.js, npm ni bundler en el stack.

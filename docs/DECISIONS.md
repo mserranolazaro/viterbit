@@ -543,11 +543,11 @@ branches, listed in `docs/QA.md`. Framework bootstrap (`Kernel.php`) is excluded
   303 to the detail page, so a refresh never resubmits. Session-based CSRF token.
 - **Caching.** Responses send `Vary: X-Requested-With`, so the browser never serves a cached
   fragment as a full page (or the other way round) on Back.
-- **Look: the bvsoft finance theme on Tailwind v4.**
-  - The `--bv-*` tokens (navy primary, ochre accent, light and dark via
+- **Look: a custom design system on Tailwind v4.**
+  - The `--ats-*` tokens (navy primary, ochre accent, light and dark via
     `prefers-color-scheme`) are mapped into `@theme inline`, so utilities such as
     `bg-surface` and `text-muted` follow the theme.
-  - The bvsoft components (`.card`, `.btn`, `.chip`, `.field`, `.entry`, `.empty-state`,
+  - The components (`.card`, `.btn`, `.chip`, `.field`, `.entry`, `.empty-state`,
     rail and tab bar) are ported into `@layer components`.
   - Tailwind runs as the **standalone binary** (`symfonycasts/tailwind-bundle`, pinned to
     v4.3.3) through AssetMapper and an importmap: no Node.js, npm or bundler in the stack.

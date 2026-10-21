@@ -1,6 +1,3 @@
-/*
- * Flash messages fade out on their own after a few seconds, as in the bvsoft admin.
- */
 const VISIBLE_MS = 5000;
 
 export function initToasts(root) {
