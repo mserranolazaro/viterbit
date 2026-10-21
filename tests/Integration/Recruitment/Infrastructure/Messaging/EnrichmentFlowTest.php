@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Recruitment\Infrastructure\Messaging;
 
 use App\Recruitment\Application\Command\JobApplication\EnrichJobApplication\EnrichJobApplicationCommand;
+use App\Recruitment\Application\Command\JobApplication\ReconcileJobApplications\ReconcileJobApplicationsCommand;
 use App\Recruitment\Application\Command\JobApplication\SubmitJobApplication\SubmitJobApplicationCommand;
 use App\Recruitment\Domain\Read\JobApplicationViewRepository;
+use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
+use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
 use App\Recruitment\Domain\Write\Event\JobApplication\JobApplicationWasSubmitted;
 use App\Recruitment\Infrastructure\Ai\SimulatedLlmClient;
 use App\Recruitment\Infrastructure\Console\SeedPositionsCommand;
 use App\Tests\IntegrationTestCase;
+use App\Tests\Support\JobApplicationMother;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 
@@ -66,6 +70,34 @@ final class EnrichmentFlowTest extends IntegrationTestCase
         self::assertCount(1, self::transport('failed')->getSent());
     }
 
+    public function testTheReconcilerRecoversAnApplicationWhoseEventsWereLost(): void
+    {
+        // Saved, but its events never reached the broker (e.g. RabbitMQ was down).
+        $lost = JobApplicationMother::received(PositionId::fromString(SeedPositionsCommand::BACKEND_ENGINEER_ID));
+        self::service(JobApplicationRepository::class)->save($lost);
+        $id = $lost->id()->value();
+        self::assertNull($this->statusOf($id));
+
+        self::service(MessageBusInterface::class)->dispatch(new ReconcileJobApplicationsCommand());
+
+        // The recruiter can see it right away; the enrichment it never got is queued again.
+        self::assertSame('received', $this->statusOf($id));
+        self::runWorker();
+        self::assertSame('enriched', $this->statusOf($id));
+    }
+
+    public function testTheReconcilerLeavesRecentAndFinishedApplicationsAlone(): void
+    {
+        $this->submit('PHP, Symfony and MongoDB.');
+        self::runWorker();
+        $this->submit('Recent and still queued.', 'grace@example.com');
+        $queued = count(self::transport('enrichment')->getSent());
+
+        self::service(MessageBusInterface::class)->dispatch(new ReconcileJobApplicationsCommand());
+
+        self::assertCount($queued, self::transport('enrichment')->getSent());
+    }
+
     public function testARedeliveredEnrichmentChangesNothing(): void
     {
         $id = $this->submit('PHP, Symfony and MongoDB.');
@@ -78,12 +110,17 @@ final class EnrichmentFlowTest extends IntegrationTestCase
         self::assertEquals($before, self::service(JobApplicationViewRepository::class)->findById($id));
     }
 
-    private function submit(string $cv): string
+    private function statusOf(string $id): ?string
+    {
+        return self::service(JobApplicationViewRepository::class)->findById($id)?->status;
+    }
+
+    private function submit(string $cv, string $email = 'ada@example.com'): string
     {
         $envelope = self::service(MessageBusInterface::class)->dispatch(new SubmitJobApplicationCommand(
             SeedPositionsCommand::BACKEND_ENGINEER_ID,
             'Ada Lovelace',
-            'ada@example.com',
+            $email,
             null,
             null,
             $cv,

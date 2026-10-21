@@ -103,6 +103,29 @@ final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
         $repository->save(JobApplicationMother::received($first->positionId()));
     }
 
+    public function testItFindsOnlyApplicationsLeftUnfinishedForTooLong(): void
+    {
+        $repository = self::service(JobApplicationRepository::class);
+        $oldReceived = JobApplicationMother::received(appliedAt: new \DateTimeImmutable('2026-10-21 09:00'));
+        $oldEnriching = JobApplicationMother::enriching();
+        $recent = JobApplicationMother::received(
+            email: 'grace@example.com',
+            appliedAt: new \DateTimeImmutable('2026-10-21 11:59'),
+        );
+        $finished = JobApplicationMother::enriching();
+        $finished->failEnrichment('Gave up', new \DateTimeImmutable('2026-10-21 09:00'));
+        foreach ([$oldReceived, $oldEnriching, $recent, $finished] as $jobApplication) {
+            $repository->save($jobApplication);
+        }
+
+        $found = iterator_to_array($repository->findUnfinishedSince(new \DateTimeImmutable('2026-10-21 11:58')), false);
+
+        self::assertEqualsCanonicalizing(
+            [$oldReceived->id()->value(), $oldEnriching->id()->value()],
+            array_map(static fn ($jobApplication): string => $jobApplication->id()->value(), $found),
+        );
+    }
+
     public function testItReturnsNullForAnUnknownId(): void
     {
         self::assertNull(self::service(JobApplicationRepository::class)->findById(JobApplicationId::generate()));

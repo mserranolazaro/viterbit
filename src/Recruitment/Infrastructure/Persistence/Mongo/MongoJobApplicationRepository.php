@@ -47,6 +47,8 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
             ['positionId' => 1, 'candidate.email' => 1],
             ['unique' => true, 'name' => self::ONE_APPLICATION_PER_CANDIDATE],
         );
+        // For the reconciler: unfinished applications by age.
+        $this->collection->createIndex(['status' => 1, 'updatedAt' => 1]);
     }
 
     public function save(JobApplication $jobApplication): void
@@ -89,6 +91,19 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
     {
         /** @var array<string, mixed> $document */
         foreach ($this->collection->find([], ['sort' => ['appliedAt' => 1]]) as $document) {
+            yield $this->toJobApplication($document);
+        }
+    }
+
+    public function findUnfinishedSince(\DateTimeImmutable $before): iterable
+    {
+        $filter = [
+            'status' => ['$in' => [JobApplicationStatus::Received->value, JobApplicationStatus::Enriching->value]],
+            'updatedAt' => ['$lt' => MongoDates::toBson($before)],
+        ];
+
+        /** @var array<string, mixed> $document */
+        foreach ($this->collection->find($filter, ['sort' => ['updatedAt' => 1]]) as $document) {
             yield $this->toJobApplication($document);
         }
     }

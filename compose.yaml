@@ -28,7 +28,8 @@ services:
   # Both can run several replicas: projections are guarded by the aggregate version (ADR-007).
   worker-events:
     <<: *php
-    command: php bin/console messenger:consume events --time-limit=3600 --memory-limit=128M -vv
+    # Also runs the recurring maintenance jobs (the reconciler, see MaintenanceSchedule).
+    command: php bin/console messenger:consume events scheduler_maintenance --time-limit=3600 --memory-limit=128M -vv
     restart: unless-stopped
     profiles: [worker]
 

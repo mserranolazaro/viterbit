@@ -26,4 +26,12 @@ interface JobApplicationRepository
      * @return iterable<JobApplication>
      */
     public function all(): iterable;
+
+    /**
+     * Applications still received or enriching whose last change is older than $before:
+     * an enrichment that should have finished by now.
+     *
+     * @return iterable<JobApplication>
+     */
+    public function findUnfinishedSince(\DateTimeImmutable $before): iterable;
 }
