@@ -166,3 +166,56 @@ a full, versioned payload.
 **Alternatives discarded.** *Apply each event as a delta to the view* (`$set status`, `$set score`):
 the usual event-sourced style, but it needs version checks to survive out-of-order and
 duplicated messages. That is more code and more ways to be wrong, for no gain here.
+
+## ADR-008 · Use cases: commands, queries and the enrichment flow
+
+**Decision.** Following the team's conventions, each use case is a message plus a handler
+(`Application/{Command,Query}/<Aggregate>/<UseCase>/`) on `command.bus` or `query.bus`.
+Event subscribers live in `Application/Event` on `event.bus`.
+
+```
+SubmitJobApplication ──▶ JobApplicationWasSubmitted ──┬─▶ RequestEnrichmentOnJobApplicationSubmitted
+                                                     │      └─▶ EnrichJobApplication (own queue, retries)
+                                                     └─▶ ProjectJobApplicationViewOnDomainEvent
+EnrichJobApplication ──▶ EnrichmentWasStarted, then WasEnriched ──▶ projection
+after the last retry ──▶ MarkEnrichmentAsFailed ──▶ EnrichmentHasFailed ──▶ projection
+```
+
+- **Every command handler** loads, changes, saves and then publishes the events it pulled from
+  the aggregate. `SubmitJobApplication` returns the new id, as the team's create handlers do.
+- **The event is turned into a command.** The event states a fact and can have several
+  subscribers (the projection, the enrichment request, tomorrow a confirmation email). The
+  command states an intent: it has its own queue and retry policy, and it can be re-sent by
+  hand for a single application without replaying the event to every subscriber.
+- **The enrichment saves `enriching` before calling the AI**, so the UI shows progress while
+  the analysis runs, and a crash mid-call leaves a visible state rather than a silent one.
+- **Failures are classified:**
+  - `CvAnalysisFailedException` (provider down, malformed or schema-invalid output) is
+    *transient*. It propagates and Messenger retries it; once retries are exhausted,
+    `MarkEnrichmentAsFailed` records the final failure.
+  - An application that does not exist is *unrecoverable*:
+    `UnrecoverableMessageHandlingException`, no retries.
+  - An application whose position is gone is a *business outcome*: it is marked as failed
+    straight away, with the reason.
+- **Idempotency:** an application already in a final status is ignored, and starting an
+  enrichment that is in progress is a no-op. Duplicated or retried messages change nothing.
+- **Queries on job applications return the read model as is.** `JobApplicationView` is
+  already flat and shaped for the pages, so a response DTO would copy it field by field.
+  Queries on positions map the aggregate to response DTOs, so the write model never
+  reaches the UI.
+- **Filters are forgiving.** Unknown statuses, malformed ids and out-of-range pages are
+  ignored rather than turned into errors: a shared or hand-edited URL still shows a list.
+
+**Alternatives discarded.**
+- *Calling the AI inside the submit request*: the candidate would wait on a slow, flaky
+  dependency, and a failure would lose the application or force the user to resubmit.
+- *Letting the enrichment handler catch its own failures and mark them failed*: it cannot know
+  whether a retry is coming. Only the worker knows when retries are exhausted.
+
+**Testing note.** Handlers are unit-tested against PHPUnit doubles of the ports, as in the
+team's services: mocks where the interaction is the assertion, stubs otherwise. A small spy
+publisher records the published events. `MockClock` makes time deterministic.
+
+**State between phases.** The ports have no adapters yet (they come with the infrastructure
+phase), so the container does not compile at this point and the kernel smoke test was
+removed. Its role is taken over by the integration and functional tests.

@@ -175,3 +175,62 @@ serían eventos de integración, con payload completo y versionado.
 `$set score`): es el estilo habitual con event sourcing, pero necesita comprobar versiones
 para aguantar mensajes desordenados o duplicados. Más código y más formas de equivocarse, sin
 ganar nada aquí.
+
+## ADR-008 · Casos de uso: comandos, queries y el flujo de enriquecimiento
+
+**Decisión.** Siguiendo las convenciones del equipo, cada caso de uso es un mensaje más un
+handler (`Application/{Command,Query}/<Agregado>/<CasoDeUso>/`) en `command.bus` o `query.bus`.
+Los suscriptores de eventos viven en `Application/Event`, en `event.bus`.
+
+```
+SubmitJobApplication ──▶ JobApplicationWasSubmitted ──┬─▶ RequestEnrichmentOnJobApplicationSubmitted
+                                                     │      └─▶ EnrichJobApplication (cola propia, reintentos)
+                                                     └─▶ ProjectJobApplicationViewOnDomainEvent
+EnrichJobApplication ──▶ EnrichmentWasStarted y después WasEnriched ──▶ proyección
+tras el último reintento ──▶ MarkEnrichmentAsFailed ──▶ EnrichmentHasFailed ──▶ proyección
+```
+
+- **Cada handler de comando** carga, modifica, guarda y después publica los eventos que ha
+  sacado del agregado. `SubmitJobApplication` devuelve el id nuevo, como los handlers de
+  creación del equipo.
+- **El evento se convierte en un comando.** El evento cuenta un hecho y puede tener varios
+  suscriptores (la proyección, la petición de enriquecimiento, mañana un email de
+  confirmación). El comando expresa una intención: tiene su propia cola y política de
+  reintentos, y se puede reenviar a mano para una sola candidatura sin reproducir el evento
+  para todos los suscriptores.
+- **El enriquecimiento guarda `enriching` antes de llamar a la IA**, para que la UI muestre el
+  progreso mientras corre el análisis y para que, si algo se cae a mitad de la llamada, quede un
+  estado visible en lugar de un fallo silencioso.
+- **Los fallos se clasifican:**
+  - `CvAnalysisFailedException` (proveedor caído, salida mal formada o que no cumple el
+    esquema) es *transitorio*. Se propaga y Messenger lo reintenta; cuando se agotan los
+    reintentos, `MarkEnrichmentAsFailed` registra el fallo definitivo.
+  - Una candidatura que no existe es *irrecuperable*:
+    `UnrecoverableMessageHandlingException`, sin reintentos.
+  - Una candidatura cuyo puesto ya no existe es un *resultado de negocio*: se marca como
+    fallida en el momento, con el motivo.
+- **Idempotencia:** una candidatura que ya está en un estado final se ignora, y arrancar un
+  enriquecimiento que ya está en curso no hace nada. Los mensajes duplicados o reintentados no
+  cambian nada.
+- **Las queries de candidaturas devuelven el modelo de lectura tal cual.** `JobApplicationView`
+  ya es plano y tiene la forma que necesitan las páginas, así que un DTO de respuesta lo
+  copiaría campo a campo. Las queries de puestos sí convierten el agregado en DTOs de respuesta,
+  para que el modelo de escritura nunca llegue a la UI.
+- **Los filtros son tolerantes.** Los estados desconocidos, los ids mal formados y las páginas
+  fuera de rango se ignoran en lugar de dar error: una URL compartida o editada a mano sigue
+  mostrando un listado.
+
+**Alternativas descartadas.**
+- *Llamar a la IA dentro de la petición de envío*: el candidato esperaría a una dependencia lenta
+  e inestable, y si fallara se perdería la candidatura o tendría que volver a enviarla.
+- *Que el handler de enriquecimiento capture sus propios fallos y los marque como fallidos*: no
+  puede saber si habrá otro reintento. Solo el worker sabe cuándo se han agotado.
+
+**Nota sobre los tests.** Los handlers se prueban de forma unitaria con dobles de PHPUnit de los
+puertos, como en los servicios del equipo: mocks cuando la interacción es lo que se comprueba y
+stubs en el resto. Un publisher espía registra los eventos publicados y `MockClock` hace que el
+tiempo sea determinista.
+
+**Estado entre fases.** Los puertos todavía no tienen adaptadores (llegan con la fase de
+infraestructura), así que en este punto el contenedor no compila y se ha quitado el test de
+arranque del kernel. Su función la asumen los tests de integración y funcionales.
