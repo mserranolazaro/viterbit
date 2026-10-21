@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Runs code style and static analysis inside the PHP container before each commit.
+# Install with `make hooks`.
+
+set -e
+
+docker compose exec -T php composer qa
