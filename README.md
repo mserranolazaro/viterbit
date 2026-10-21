@@ -20,8 +20,9 @@ You only need Docker (with Compose) and `make`.
 make init
 ```
 
-This builds the images, starts every service (web, **Messenger worker**, MongoDB, RabbitMQ),
-installs dependencies, creates the indexes, loads **4 sample positions** and builds the CSS.
+This builds the images, starts every service (web, **two Messenger workers**, MongoDB,
+RabbitMQ), installs dependencies, creates the indexes, loads **4 sample positions** and builds
+the CSS. CI runs this same command on every push.
 
 | | |
 |---|---|
@@ -34,8 +35,9 @@ Then:
 ```bash
 make demo      # submit 7 sample applications and watch them get enriched live
 make test      # unit, integration and functional tests (real MongoDB)
-make qa        # php-cs-fixer, phpcs (PSR-12), PHPStan
-make logs      # follow the worker
+make qa        # php-cs-fixer, phpcs (PSR-12), PHPStan level 8
+make security  # fails if PHP is older than the last security release
+make logs      # follow the workers
 make help      # every target
 ```
 
@@ -45,10 +47,11 @@ make help      # every target
    which shows *Received*, then *Analysing CV*, then *Enriched* with a summary and a score.
    The page updates by itself.
 2. **Browse:** go to *Applications*. The list is newest first, filters (status, position) and
-   search (name or email) apply as you type, and the URL can be shared.
+   search (name or email) apply as you type, the URL can be shared, and each application shows
+   its score and status.
 3. **See a failure:** put `[simulate-llm-failure]` anywhere in a CV. The fake LLM answers with
-   invalid output, the worker retries it 3 times, and the application ends up *Failed* with
-   the reason shown.
+   invalid output, the enrichment is tried 3 times, and the application ends up *Failed*,
+   flagged for manual review.
 
 ## Architecture
 
@@ -84,21 +87,22 @@ flowchart LR
 
     form -- "command.bus (sync)" --> submit --> agg --> write
     submit -- "JobApplicationWasSubmitted" --> mq
-    mq -- "worker" --> project
-    mq -- "worker: EnrichJobApplication" --> enrich
+    mq -- "worker-events" --> project
+    mq -- "worker-enrichment" --> enrich
     enrich --> agg
     enrich --> port -.-> ai
     enrich -- "EnrichmentWasStarted, WasEnriched" --> mq
     mq -. "retries exhausted" .-> failed --> agg
-    project -- "re-reads the aggregate, upserts" --> read
+    project -- "re-reads the aggregate, upserts if newer (version)" --> read
     pages -- "query.bus" --> queries --> read
 ```
 
 - **Write side:** commands change the `JobApplication` aggregate, which records domain events.
   The aggregate is saved to `job_applications` and its events are published to RabbitMQ.
-- **Async side:** the worker consumes the events. A submission turns into an
-  `EnrichJobApplication` command on its own queue, which has its own retries. Every event
-  refreshes the read model.
+- **Async side:** two workers, one per queue. A submission turns into an
+  `EnrichJobApplication` command on its own queue, with its own retries, so a slow AI call never
+  delays the projections. Every event refreshes the read model, and a version guard keeps a
+  stale projection from overwriting a newer one.
 - **Read side:** the list and detail pages query `job_application_views`, a flat collection
   indexed for the list.
 - **AI:** the domain only knows the `CvAnalyzer` port. The adapter renders a versioned prompt,
@@ -127,16 +131,18 @@ The ones most worth discussing:
 | MongoDB only, with separate write and read collections | CQRS separates models, not engines; one engine fewer for a PoC | 009 |
 | The official driver instead of Doctrine ODM | Explicit mapping and no persistence attributes in the domain | 010 |
 | Event → command for the enrichment | The fact can have many subscribers; the intent has its own queue and retries | 008 |
-| A projection that re-reads the aggregate | Idempotent, order-independent and rebuildable (`app:views:rebuild`) | 007 |
+| A projection that re-reads the aggregate, guarded by its version | Idempotent, order-independent even with parallel workers, and rebuildable (`app:views:rebuild`) | 007 |
+| One worker per queue | A slow AI call never holds up the projections; each side scales on its own | 011 |
 | The final failure comes from the worker (`WorkerMessageFailedEvent`) | Only the worker knows that retries are exhausted | 012 |
 | An LLM treated as untrusted (versioned prompt, JSON Schema, retries) | Swapping in a real model is one class; nothing else changes | 013 |
 | Tests run a real Messenger worker over in-memory transports | They assert the state between asynchronous steps, where the bugs are | 014 |
 | HTML fragments and polling instead of a SPA | One renderer, no build chain, works without JS | 015 |
-| Security housekeeping: Symfony 8.1, PHP CVE guard, no upload surface | 8.0 is unpatched; php2shell (CVE-2026-109618/9) was published during the exercise | 002, 004 |
+| Security and privacy: rate limit, nonce-based CSP, explicit consent, ids-only messages | A public form taking CVs: abuse, XSS and GDPR are the real risks | 016 |
+| Patched runtime: Symfony 8.1, PHP pinned to 8.4.27, CVE guard in CI | 8.0 is unpatched; php2shell (CVE-2026-109618/9) was published during the exercise | 002, 004 |
 
 ## Tests
 
-117 tests: unit tests (domain, use cases with doubles of the ports, AI adapter), integration
+129 tests: unit tests (domain, use cases with doubles of the ports, AI adapter), integration
 tests (MongoDB repositories, the full asynchronous flow with a real worker, the rebuild
 command) and functional tests (the HTTP flows).
 
@@ -147,6 +153,8 @@ command) and functional tests (the HTTP flows).
 | Retries and the final failure | `EnrichmentFlowTest`, `ApplyToAPositionTest::testAFailedEnrichmentIsExplainedOnTheDetailPage` |
 | The list is newest first, with filters and search | `MongoJobApplicationViewRepositoryTest`, `BrowseApplicationsTest` |
 | The detail view shows all the data, including the enrichment | `ApplyToAPositionTest` |
+| Consent, rate limiting and security headers | `ApplyToAPositionTest`, `SecurityHeadersTest` |
+| A stale projection never overwrites a newer view | `MongoJobApplicationViewRepositoryTest` |
 
 The JavaScript has no automated tests: it is checked by hand in the browser (see "With more time").
 
@@ -159,7 +167,9 @@ The JavaScript has no automated tests: it is checked by hand in the browser (see
   the provider's structured output fed with the same JSON Schema.
 - **Authentication and roles**, separating the candidate and recruiter areas.
 - **Browser end-to-end tests** (Playwright) for the live filters and polling.
-- **Optimistic locking** (a `version` field) once more than one writer can touch an application (ADR-010).
+- **Retention and the right to erasure** (GDPR): delete or anonymise a candidate's data on request and after a retention period (ADR-016).
+- **Optimistic locking on the write model**, once more than one writer can touch an application. The version is already there (ADR-010).
+- **Observability:** structured logs with correlation ids across HTTP, events and enrichment, and metrics on queue depth, AI latency and failure rate.
 - **Search at scale:** a text index or Atlas Search instead of an unanchored regex.
 - **JSON, versioned integration events** if other services start consuming these events.
 
@@ -184,4 +194,13 @@ infrastructure, UI and docs.
 - **Security:** a critical PHP security release (php2shell) came out during the exercise. The
   assistant researched the advisories, found that the base image was still vulnerable, and
   added the mitigation and the guard described in ADR-004.
+- **Review:** before delivering, I asked for a CTO-style review of the whole code base and then
+  fixed everything it found, each item with a test where it applied:
+  - CI failing on a clean clone;
+  - a documented claim about worker priorities that was not true;
+  - projections that could go backwards with parallel workers;
+  - a missing rate limit and missing consent on a public form;
+  - no CSP;
+  - accessibility noise from polling;
+  - and smaller polish.
 - **Docs:** `docs/DECISIONS.md` was written alongside the code, one entry per decision.
