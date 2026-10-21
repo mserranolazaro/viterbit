@@ -8,8 +8,9 @@
         <meta name="theme-color" content="#0C111E" media="(prefers-color-scheme: dark)">
         <title>{% block title %}ATS{% endblock %} · ATS PoC</title>
         <link rel="icon" href="data:image/svg+xml,{{ include('ui/_brand_mark.svg.twig')|url_encode }}">
+        <link rel="stylesheet" href="{{ asset('styles/app.css') }}">
         {% block javascripts %}
-            {{ importmap('app') }}
+            {{ importmap('app', {nonce: csp_nonce()}) }}
         {% endblock %}
     </head>
     <body>

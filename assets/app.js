@@ -1,7 +1,8 @@
 /*
  * Entry point loaded on every page through the importmap (no bundler, no framework).
+ * The CSS is a plain <link> in base.html.twig: importing it here would become a data: module,
+ * which the Content-Security-Policy rightly refuses.
  */
-import './styles/app.css';
 import { initLiveRegions } from './js/live.js';
 import { initToasts } from './js/toasts.js';
 import { focusFirstInvalidField } from './js/forms.js';
