@@ -387,4 +387,60 @@ failing enrichment would bubble up into the submit call (no retries, no final-fa
 listener), and the tests would cover a flow that never runs in production.
 
 **Consequence for the UI.** The read model is eventually consistent: for a few milliseconds
-after submitting, there is no view yet. The pages have to cope with that (UI phase).
+after submitting, there is no view yet. The pages have to cope with that (ADR-015).
+
+**Functional tests** drive the app over HTTP with the same worker. Symfony empties in-memory
+transports between two requests of the same test client, so a message queued by the POST would
+vanish when the redirect is followed. A test-only kernel (`tests/Support/TestKernel.php`,
+selected by `KERNEL_CLASS` in `.env.test`) removes that reset, so queues behave like a broker:
+submit, see the pending page, run the worker, see the result. `runWorker('events')` runs only
+the projections, which shows a listed application still waiting for the AI.
+
+## ADR-015 · UI: server-rendered pages that update in place
+
+**Decision.**
+- **Twig, server-rendered.** Every page is a controller and a template. Each controller is one
+  invokable class per route (the team's convention) that only dispatches queries and commands.
+- **Real-time filtering and progress use HTML fragments.** The list and detail URLs return the
+  full page, or only the part that changes when the request carries `X-Requested-With: fetch`.
+  About 120 lines of vanilla JS (`assets/js/live.js`) handle this:
+  - filters reload the results 250 ms after typing (immediately for selects);
+  - an `AbortController` cancels stale requests, so results never arrive out of order;
+  - `history.replaceState` keeps the URL shareable;
+  - a region polls every 2 s while it contains `[data-pending]` (an application the AI has not
+    finished), stops by itself, and pauses while the tab is hidden.
+- **Progressive enhancement.** The filters are a plain GET form and the application form a plain
+  POST. Both work without JavaScript; JS only makes them faster.
+- **Eventual consistency, handled.** Right after submitting, the detail page may load before
+  the projection. The candidate who has just applied (remembered in the session) sees an
+  "Application received" state that refreshes itself. Anyone else asking for an unknown id
+  gets a 404.
+- **Form handling.** A request DTO validates the input with friendly per-field messages, and
+  the domain enforces the same rules again as invariants. Errors re-render the form with
+  status 422, keeping what was typed and focusing the first invalid field. Success returns
+  303 to the detail page, so a refresh never resubmits. Session-based CSRF token.
+- **Caching.** Responses send `Vary: X-Requested-With`, so the browser never serves a cached
+  fragment as a full page (or the other way round) on Back.
+- **Look: the bvsoft finance theme on Tailwind v4.**
+  - The `--bv-*` tokens (navy primary, ochre accent, light and dark via
+    `prefers-color-scheme`) are mapped into `@theme inline`, so utilities such as
+    `bg-surface` and `text-muted` follow the theme.
+  - The bvsoft components (`.card`, `.btn`, `.chip`, `.field`, `.entry`, `.empty-state`,
+    rail and tab bar) are ported into `@layer components`.
+  - Tailwind runs as the **standalone binary** (`symfonycasts/tailwind-bundle`, pinned to
+    v4.3.3) through AssetMapper and an importmap: no Node.js, npm or bundler in the stack.
+- **Self-hosted fonts and icons**, as in the team's apps (no third-party requests). Material
+  Symbols is **subset to the 30 icons used**, cutting it from 5.4 MB to 33 KB. The script
+  `resources/fonts/subset_material_symbols.py` regenerates it.
+
+**Alternatives discarded.**
+- *A JSON API plus client-side rendering (React/Vue)*: two renderers of the same row, a build
+  chain, and more JavaScript to test, for three pages.
+- *Server-Sent Events or WebSockets for progress*: push is the better fit at scale (Mercure
+  would be the Symfony choice). For a PoC, a 2 s poll that stops when nothing is pending is
+  simpler and has no extra infrastructure. It is listed for future work.
+- *Symfony UX Turbo/Stimulus*: they would do the same with less custom JS, but they add a
+  framework to learn for about 120 lines of code.
+
+**Not in scope:** authentication and roles (the candidate and recruiter pages are open),
+internationalisation (the UI is English), and file uploads (forbidden by the exercise).

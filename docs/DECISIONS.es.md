@@ -413,4 +413,66 @@ simple, pero un enriquecimiento fallido saltaría hasta la llamada de envío (si
 el listener de fallo definitivo), y los tests cubrirían un flujo que nunca se da en producción.
 
 **Consecuencia para la UI.** El modelo de lectura tiene consistencia eventual: durante unos
-milisegundos después del envío todavía no hay vista. Las páginas tienen que contemplarlo (fase de UI).
+milisegundos después del envío todavía no hay vista. Las páginas tienen que contemplarlo (ADR-015).
+
+**Los tests funcionales** recorren la app por HTTP con el mismo worker. Symfony vacía los
+transports en memoria entre dos peticiones del mismo cliente de test, así que un mensaje
+encolado por el POST desaparecería al seguir la redirección. Un kernel solo para tests
+(`tests/Support/TestKernel.php`, que se selecciona con `KERNEL_CLASS` en `.env.test`) quita ese
+reset, y las colas se comportan como un broker: enviar, ver la página de pendiente, ejecutar el
+worker y ver el resultado. `runWorker('events')` ejecuta solo las proyecciones, lo que permite
+ver una candidatura ya listada que todavía espera a la IA.
+
+## ADR-015 · UI: páginas renderizadas en servidor que se actualizan en el sitio
+
+**Decisión.**
+- **Twig, renderizado en servidor.** Cada página es un controlador y una plantilla. Cada
+  controlador es una clase invocable por ruta (la convención del equipo) que solo despacha
+  queries y comandos.
+- **El filtrado en tiempo real y el progreso usan fragmentos HTML.** Las URLs del listado y del
+  detalle devuelven la página completa, o solo la parte que cambia cuando la petición lleva
+  `X-Requested-With: fetch`. De eso se encargan unas 120 líneas de JS vanilla
+  (`assets/js/live.js`):
+  - los filtros recargan los resultados 250 ms después de escribir (al momento en los select);
+  - un `AbortController` cancela las peticiones antiguas, para que los resultados nunca lleguen
+    desordenados;
+  - `history.replaceState` mantiene la URL compartible;
+  - una región consulta el servidor cada 2 s mientras contiene `[data-pending]` (una candidatura
+    que la IA no ha terminado), se detiene sola y se pausa mientras la pestaña está oculta.
+- **Mejora progresiva.** Los filtros son un formulario GET normal y la candidatura un POST normal.
+  Los dos funcionan sin JavaScript; el JS solo los hace más rápidos.
+- **Consistencia eventual, contemplada.** Justo después de enviar, el detalle puede cargarse antes
+  que la proyección. El candidato que acaba de postularse (recordado en la sesión) ve un estado
+  de «Application received» que se refresca solo. Cualquier otra persona que pida un id
+  desconocido recibe un 404.
+- **Gestión del formulario.** Un DTO de petición valida la entrada con mensajes claros por campo,
+  y el dominio vuelve a imponer las mismas reglas como invariantes. Los errores vuelven a pintar
+  el formulario con estado 422, conservando lo escrito y poniendo el foco en el primer campo
+  inválido. Si todo va bien, responde con un 303 al detalle, así que recargar nunca reenvía el
+  formulario. Token CSRF basado en sesión.
+- **Caché.** Las respuestas envían `Vary: X-Requested-With`, para que al volver atrás el navegador
+  nunca sirva un fragmento cacheado como página completa (ni al revés).
+- **Aspecto: el tema finance de bvsoft sobre Tailwind v4.**
+  - Los tokens `--bv-*` (primario navy, acento ocre, claro y oscuro con `prefers-color-scheme`)
+    se mapean en `@theme inline`, así que utilidades como `bg-surface` o `text-muted` siguen el
+    tema.
+  - Los componentes de bvsoft (`.card`, `.btn`, `.chip`, `.field`, `.entry`, `.empty-state`, rail
+    y tab bar) se han portado a `@layer components`.
+  - Tailwind se ejecuta como **binario standalone** (`symfonycasts/tailwind-bundle`, fijado en la
+    v4.3.3) a través de AssetMapper y un importmap: sin Node.js, npm ni bundler en el stack.
+- **Fuentes e iconos autoalojados**, como en las apps del equipo (sin peticiones a terceros). Material
+  Symbols se ha **recortado a los 30 iconos que se usan**, lo que lo reduce de 5,4 MB a 33 KB. El
+  script `resources/fonts/subset_material_symbols.py` lo regenera.
+
+**Alternativas descartadas.**
+- *Una API JSON más renderizado en cliente (React/Vue)*: dos renderizadores para la misma fila,
+  una cadena de build y más JavaScript que probar, para tres páginas.
+- *Server-Sent Events o WebSockets para el progreso*: el push encaja mejor a escala (Mercure sería
+  la opción en Symfony). En un PoC, un polling cada 2 s que se detiene cuando no queda nada
+  pendiente es más simple y no necesita infraestructura extra. Queda apuntado como trabajo futuro.
+- *Symfony UX Turbo/Stimulus*: harían lo mismo con menos JS propio, pero añaden un framework que
+  aprender para unas 120 líneas de código.
+
+**Fuera de alcance:** autenticación y roles (las páginas de candidato y de recruiter están
+abiertas), internacionalización (la UI está en inglés) y subida de ficheros (prohibida por el
+ejercicio).
