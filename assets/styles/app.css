@@ -291,6 +291,8 @@
         width: 100%; max-width: calc(var(--bv-page-max) + 48px);
         margin: 0 auto;
         padding: 8px 24px 48px;
+        /* Candidates type anything: a 120-letter word must wrap, never widen the page. */
+        overflow-wrap: anywhere;
     }
 
     .tabbar { display: none; }
@@ -473,12 +475,13 @@
         .toasts { top: auto; right: 16px; left: 16px; width: auto; bottom: calc(var(--bv-tabbar-height) + 16px + env(safe-area-inset-bottom)); }
     }
 
-    .details { display: grid; gap: 10px; }
+    .details { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
     .details__item { background: var(--bv-surface-2); border-radius: var(--bv-radius-md); padding: 12px 14px; min-width: 0; }
     .details__label { font-size: 12px; font-weight: 700; color: var(--bv-text-subtle); text-transform: uppercase; letter-spacing: .06em; }
     .details__value { font-size: 15px; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
 
-    .entries { list-style: none; display: grid; }
+    /* minmax(0, 1fr): without it the column grows to the longest name and the list overflows. */
+    .entries { list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); }
     .entry {
         display: flex; align-items: center; gap: 14px;
         padding: 14px 20px;
@@ -489,7 +492,7 @@
     }
     .entries > li:first-child > .entry { border-top: 0; }
     a.entry:hover { background: color-mix(in srgb, var(--bv-surface-2) 60%, transparent); }
-    .entry__main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+    .entry__main { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
     .entry__title { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .entry__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 13.5px; color: var(--bv-text-muted); }
     .entry__meta > span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
@@ -551,6 +554,7 @@
     .page-header__title { font-size: clamp(26px, 3.2vw, 34px); font-weight: 800; letter-spacing: -.03em; }
     .page-header__sub { font-size: 15px; color: var(--bv-text-muted); margin-top: 6px; max-width: 620px; }
     .page-header__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .page-header > div { min-width: 0; }
 
     @media (max-width: 899px) {
         .page-header { padding: 12px 0 18px; }

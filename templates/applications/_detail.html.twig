@@ -14,7 +14,7 @@
 {% set pending = application.status in ['received', 'enriching'] %}
 <div data-page-title="{{ application.candidateName }}" {% if pending %}data-pending{% endif %}>
     <header class="page-header">
-        <div class="flex items-center gap-4">
+        <div class="flex min-w-0 items-center gap-4">
             <span class="avatar avatar--lg" aria-hidden="true">{{ ui.initials(application.candidateName) }}</span>
             <div>
                 <p class="page-header__eyebrow">{{ application.positionTitle }}</p>
@@ -24,8 +24,8 @@
         <div class="page-header__actions">{{ ui.status_chip(application.status) }}</div>
     </header>
 
-    <div class="grid items-start gap-5 lg:grid-cols-12">
-        <div class="grid gap-5 lg:col-span-8">
+    <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
+        <div class="grid min-w-0 gap-5 lg:col-span-8">
             <section class="card" aria-labelledby="screening">
                 <div class="card__header">
                     <h2 class="card__title" id="screening">{{ ui.icon('auto_awesome') }} AI screening</h2>
@@ -84,7 +84,7 @@
             </section>
         </div>
 
-        <aside class="grid gap-5 lg:col-span-4">
+        <aside class="grid min-w-0 gap-5 lg:col-span-4">
             <section class="card" aria-labelledby="candidate">
                 <div class="card__header"><h2 class="card__title" id="candidate">{{ ui.icon('person_search') }} Candidate</h2></div>
                 <div class="card__body details">
