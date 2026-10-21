@@ -1,0 +1,3 @@
+symfonycasts_tailwind:
+    # Standalone binary, downloaded on first build: no Node.js in the stack.
+    binary_version: 'v4.3.3'
