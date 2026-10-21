@@ -7,6 +7,7 @@ namespace App\Recruitment\Infrastructure\Http\Request;
 use App\Recruitment\Domain\Write\Aggregate\Root\JobApplication\JobApplication;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Candidate;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\CvText;
+use App\SharedKernel\Domain\Value\Text;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -38,17 +39,25 @@ final class SubmitJobApplicationRequest
     ) {
     }
 
+    /**
+     * Normalised the same way the domain does, so limits are checked on what will be stored
+     * (e.g. a CV's \r\n line breaks count as one character, as the browser counted them).
+     */
     public static function fromRequest(Request $request): self
     {
-        $field = static fn (string $name): string => trim($request->request->getString($name));
+        $field = static function (string $name) use ($request): string {
+            $value = $request->request->all()[$name] ?? '';
+
+            return is_string($value) ? $value : '';
+        };
 
         return new self(
-            $field('fullName'),
-            $field('email'),
-            $field('phone'),
-            $field('notes'),
-            $field('cvText'),
-            $request->request->getBoolean('privacyConsent'),
+            Text::singleLine($field('fullName')),
+            trim($field('email')),
+            Text::singleLine($field('phone')),
+            Text::multiLine($field('notes')),
+            Text::multiLine($field('cvText')),
+            filter_var($field('privacyConsent'), FILTER_VALIDATE_BOOLEAN),
         );
     }
 

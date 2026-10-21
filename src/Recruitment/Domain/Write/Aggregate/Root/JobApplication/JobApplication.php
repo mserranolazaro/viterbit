@@ -18,6 +18,7 @@ use App\Recruitment\Domain\Write\Event\JobApplication\JobApplicationWasSubmitted
 use App\Recruitment\Domain\Write\Exception\JobApplication\InvalidJobApplicationDataException;
 use App\Recruitment\Domain\Write\Exception\JobApplication\InvalidJobApplicationStatusTransitionException;
 use App\SharedKernel\Domain\Aggregate\AggregateRoot;
+use App\SharedKernel\Domain\Value\Text;
 
 /**
  * A candidate's application to a position, and the state of its AI enrichment.
@@ -59,7 +60,7 @@ final class JobApplication extends AggregateRoot
             throw InvalidJobApplicationDataException::privacyConsentRequired();
         }
 
-        $notes = $notes === null ? null : trim($notes);
+        $notes = $notes === null ? null : Text::multiLine($notes);
         if ($notes !== null && mb_strlen($notes) > self::NOTES_MAX_LENGTH) {
             throw InvalidJobApplicationDataException::notesTooLong(self::NOTES_MAX_LENGTH);
         }

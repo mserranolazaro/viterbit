@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Recruitment\Domain\Write\Aggregate\Value\JobApplication;
 
 use App\Recruitment\Domain\Write\Exception\JobApplication\InvalidJobApplicationDataException;
+use App\SharedKernel\Domain\Value\Text;
 
 /**
- * The CV as pasted by the candidate. Kept verbatim (only trimmed) because recruiters
- * read the original in the detail view.
+ * The CV as pasted by the candidate. Kept as written (line breaks normalised, control
+ * characters removed) because recruiters read the original in the detail view.
  */
 final readonly class CvText
 {
@@ -20,7 +21,7 @@ final readonly class CvText
 
     public static function fromString(string $value): self
     {
-        $value = trim($value);
+        $value = Text::multiLine($value);
         if ($value === '') {
             throw InvalidJobApplicationDataException::emptyCv();
         }

@@ -34,6 +34,7 @@ final class CandidateTest extends TestCase
     public static function invalidCandidates(): iterable
     {
         yield 'empty name' => ['   ', null];
+        yield 'name made of invisible characters' => ["\u{200B}\u{200B}", null];
         yield 'name too long' => [str_repeat('a', Candidate::FULL_NAME_MAX_LENGTH + 1), null];
         yield 'phone with letters' => ['Ada Lovelace', 'call me'];
         yield 'phone too short' => ['Ada Lovelace', '123'];

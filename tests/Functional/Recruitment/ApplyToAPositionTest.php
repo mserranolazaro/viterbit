@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Recruitment;
 
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\CvText;
 use App\Recruitment\Infrastructure\Ai\SimulatedLlmClient;
 use App\Recruitment\Infrastructure\Console\SeedPositionsCommand;
 use App\Tests\FunctionalTestCase;
@@ -109,6 +110,44 @@ final class ApplyToAPositionTest extends FunctionalTestCase
         self::assertSelectorTextContains('.page-header', 'Failed');
         self::assertSelectorTextContains('[role="alert"]', 'This CV could not be screened automatically.');
         self::assertSelectorTextContains('[role="alert"] details', 'Enrichment failed after 3 attempt(s)');
+    }
+
+    public function testAnInvisibleNameIsTreatedAsMissing(): void
+    {
+        $crawler = $this->apply(['fullName' => "\u{200B}\u{200B}"] + self::VALID);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Tell us your full name.', $crawler->filter('#fullName-error')->text());
+    }
+
+    public function testACvAtTheLimitIsAcceptedWhateverLineBreaksTheBrowserSends(): void
+    {
+        // The textarea allows 20,000 characters counting each line break once; browsers send \r\n.
+        $cv = rtrim(str_repeat(str_repeat('a', 99) . "\n", 200)) . str_repeat('b', 1);
+        self::assertSame(CvText::MAX_LENGTH, mb_strlen($cv));
+
+        $this->apply(['cvText' => str_replace("\n", "\r\n", $cv)] + self::VALID);
+
+        self::assertResponseStatusCodeSame(303);
+    }
+
+    public function testFieldsSentAsArraysAreTreatedAsMissing(): void
+    {
+        $crawler = $this->client->request('GET', self::POSITION);
+        $token = $crawler->filter('input[name="_token"]')->attr('value');
+
+        $this->client->request('POST', self::POSITION . '/applications', [
+            '_token' => $token,
+            'fullName' => ['Ada'],
+            'email' => ['$ne' => ''],
+            'cvText' => 'PHP',
+            'privacyConsent' => ['1'],
+        ]);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSelectorTextContains('#fullName-error', 'Tell us your full name.');
+        self::assertSelectorTextContains('#email-error', 'We need an email to contact you.');
+        self::assertSelectorTextContains('#privacyConsent-error', 'Please accept the privacy notice to apply.');
     }
 
     public function testItCannotApplyWithoutAcceptingThePrivacyNotice(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Recruitment\Domain\Write\Aggregate\Value\JobApplication;
 
 use App\Recruitment\Domain\Write\Exception\JobApplication\InvalidJobApplicationDataException;
+use App\SharedKernel\Domain\Value\Text;
 
 final readonly class Candidate
 {
@@ -21,7 +22,7 @@ final readonly class Candidate
 
     public static function create(string $fullName, Email $email, ?string $phone): self
     {
-        $fullName = trim((string) preg_replace('/\s+/', ' ', $fullName));
+        $fullName = Text::singleLine($fullName);
         if ($fullName === '') {
             throw InvalidJobApplicationDataException::emptyFullName();
         }
@@ -30,7 +31,7 @@ final readonly class Candidate
             throw InvalidJobApplicationDataException::fullNameTooLong(self::FULL_NAME_MAX_LENGTH);
         }
 
-        $phone = $phone === null ? null : trim($phone);
+        $phone = $phone === null ? null : Text::singleLine($phone);
         if ($phone === '') {
             $phone = null;
         }

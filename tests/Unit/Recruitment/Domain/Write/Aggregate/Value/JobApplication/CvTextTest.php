@@ -17,6 +17,15 @@ final class CvTextTest extends TestCase
         self::assertSame("Experience:\n  - PHP", $cv->value());
     }
 
+    public function testItCountsALineBreakAsOneCharacterLikeTheBrowserDoes(): void
+    {
+        // 20,000 characters as the textarea counts them, sent with \r\n line breaks.
+        $cv = CvText::fromString(str_repeat(str_repeat('a', 99) . "\r\n", 200));
+
+        self::assertSame(19999, mb_strlen($cv->value()));
+        self::assertStringNotContainsString("\r", $cv->value());
+    }
+
     public function testItRejectsAnEmptyCv(): void
     {
         $this->expectException(InvalidJobApplicationDataException::class);
