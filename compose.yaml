@@ -72,5 +72,11 @@ services:
       timeout: 10s
       retries: 20
 
+  # Real Chrome for the acceptance tests (make acceptance): drives the app through Caddy.
+  selenium:
+    image: selenium/standalone-chromium:4.49.0-20260909
+    shm_size: 2gb
+    profiles: [e2e]
+
 volumes:
   mongo-data:

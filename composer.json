@@ -93,7 +93,8 @@
         "phpunit/phpunit": "^13.4",
         "squizlabs/php_codesniffer": "^4.0",
         "symfony/browser-kit": "8.1.*",
-        "symfony/css-selector": "8.1.*"
+        "symfony/css-selector": "8.1.*",
+        "symfony/panther": "^2.4"
     },
     "name": "mserrano/viterbit-ats",
     "description": "ATS proof of concept for the Viterbit technical exercise"

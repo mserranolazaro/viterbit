@@ -40,7 +40,7 @@ up: ## Start containers (including the workers)
 	$(DC) --profile worker up -d
 
 down: ## Stop containers
-	$(DC) --profile worker down
+	$(DC) --profile worker --profile e2e down
 
 logs: ## Follow the workers' logs
 	$(DC) logs -f worker-events worker-enrichment
@@ -48,8 +48,12 @@ logs: ## Follow the workers' logs
 sh: ## Shell inside the PHP container
 	$(DC) exec php bash
 
-test: assets ## Run the whole test suite (pages render the built CSS)
-	$(PHP) vendor/bin/phpunit --no-coverage
+test: assets ## Unit, integration and functional tests (pages render the built CSS)
+	$(PHP) vendor/bin/phpunit --testsuite default --no-coverage
+
+acceptance: ## Acceptance tests in a real browser against the running stack (make init first)
+	$(DC) --profile e2e up -d --wait selenium
+	$(PHP) vendor/bin/phpunit --testsuite acceptance --no-coverage
 
 qa: ## Code style and static analysis
 	$(PHP) composer qa
@@ -62,4 +66,4 @@ security: ## Fail if the PHP runtime is older than the last security release
 hooks: ## Install the git pre-commit hook
 	git config core.hooksPath resources/git/hooks
 
-.PHONY: help init setup assets demo css up down logs sh test qa security hooks
+.PHONY: help init setup assets demo css up down logs sh test acceptance qa security hooks

@@ -15,9 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libicu-dev \
     librabbitmq-dev \
     libssl-dev \
+    libzip-dev \
     && docker-php-ext-install -j$(nproc) \
         intl \
         opcache \
+        zip \
     && build_ext() { \
         mkdir -p "/tmp/$1" && curl -fsSL "$2" | tar xz -C "/tmp/$1" --strip-components=1 \
         && cd "/tmp/$1" && phpize && ./configure --quiet && make -j"$(nproc)" >/dev/null && make install \
