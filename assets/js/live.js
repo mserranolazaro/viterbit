@@ -8,9 +8,13 @@
  *   reloads the region with the new filters and updates the URL, so it can be shared.
  *   Without JavaScript the form still works: it submits and the page reloads.
  * - a[data-live-link] inside a region (pagination) loads in place too.
+ * - [data-live-status]: a visually hidden aria-live element next to the region. Screen readers
+ *   hear the region's [data-live-summary] when it changes, not the whole list on every poll.
  */
 
 const POLL_MS = 2000;
+// After ~5 minutes something is wrong (a worker down?): stop and say so instead of polling forever.
+const MAX_POLLS = 150;
 const DEBOUNCE_MS = 250;
 
 class LiveRegion {
@@ -19,6 +23,9 @@ class LiveRegion {
         this.url = window.location.href;
         this.controller = null;
         this.timer = null;
+        this.polls = 0;
+        this.status = document.getElementById(element.dataset.liveStatus ?? '');
+        this.lastSummary = this.summary();
 
         element.addEventListener('click', (event) => {
             const link = event.target.closest('a[data-live-link]');
@@ -33,6 +40,7 @@ class LiveRegion {
 
     navigate(url) {
         window.history.replaceState(null, '', url);
+        this.polls = 0;
         return this.load(url);
     }
 
@@ -54,6 +62,7 @@ class LiveRegion {
             }
             this.element.innerHTML = await response.text();
             this.syncTitle();
+            this.announce();
         } catch (error) {
             if (error.name === 'AbortError') {
                 return;
@@ -70,16 +79,47 @@ class LiveRegion {
     syncTitle() {
         const title = this.element.querySelector('[data-page-title]')?.dataset.pageTitle;
         if (title) {
-            document.title = document.title.replace(/^.*?( · )/, `${title}$1`);
+            // A function, not a string: a name such as "$1" must not be read as a replacement pattern.
+            document.title = document.title.replace(/^.*?( · )/, (match, separator) => title + separator);
             document.querySelector('.topbar__title')?.replaceChildren(title);
         }
     }
 
+    summary() {
+        return this.element.querySelector('[data-live-summary]')?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+    }
+
+    announce() {
+        const summary = this.summary();
+        if (this.status && summary !== this.lastSummary) {
+            this.status.textContent = summary;
+        }
+        this.lastSummary = summary;
+    }
+
     schedulePoll() {
         clearTimeout(this.timer);
-        if (this.element.querySelector('[data-pending]')) {
-            this.timer = setTimeout(() => (document.hidden ? this.schedulePoll() : this.load()), POLL_MS);
+        if (!this.element.querySelector('[data-pending]')) {
+            return;
         }
+
+        if (this.polls >= MAX_POLLS) {
+            this.element.querySelector('[data-pending]').insertAdjacentHTML(
+                'afterbegin',
+                '<p class="alert alert--warning m-5" role="status">This is taking longer than usual. '
+                    + 'Refresh the page in a while to see the result.</p>',
+            );
+            return;
+        }
+
+        this.timer = setTimeout(() => {
+            if (document.hidden) {
+                this.schedulePoll();
+                return;
+            }
+            this.polls += 1;
+            this.load();
+        }, POLL_MS);
     }
 }
 

@@ -7,7 +7,8 @@
 {% set query = app.request.query.all|filter((v, k) => v is not empty and k != 'page') %}
 
 <div class="card__header" {% if pending %}data-pending{% endif %}>
-    <h2 class="card__title">{{ ui.icon('groups') }} {{ page.total }} {{ page.total == 1 ? 'application' : 'applications' }}</h2>
+    {# Only this text is announced to screen readers when it changes (see live.js). #}
+    <h2 class="card__title" id="results-title">{{ ui.icon('groups') }} <span data-live-summary>{{ page.total }} {{ page.total == 1 ? 'application' : 'applications' }}</span></h2>
     {% if pending %}
         <span class="inline-flex items-center gap-2 text-[13px] font-semibold text-muted"><span class="live-dot"></span> Updating as the AI finishes</span>
     {% endif %}

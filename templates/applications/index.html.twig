@@ -46,7 +46,8 @@
     </div>
 </form>
 
-<section class="card" id="results" data-live-region aria-live="polite">
+<section class="card" id="results" data-live-region data-live-status="results-status" aria-labelledby="results-title">
     {{ include('applications/_results.html.twig') }}
 </section>
+<p id="results-status" class="visually-hidden" aria-live="polite"></p>
 {% endblock %}
