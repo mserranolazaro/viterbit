@@ -12,15 +12,18 @@ La versión en inglés es la canónica; esta se actualiza en el mismo commit.
 - *Aplicación:* 008 Casos de uso: comandos, queries y el flujo de enriquecimiento
 - *Infraestructura:* 009 Solo MongoDB: una colección para escribir y otra para leer · 010 El driver oficial de MongoDB en lugar de Doctrine ODM · 011 Topología de mensajería y publicación de eventos · 012 Reintentos y fallo definitivo · 013 La IA detrás de un puerto, simulada como si fuera un LLM real
 - *Calidad y UI:* 014 Cómo probar un sistema asíncrono · 015 UI: páginas renderizadas en servidor que se actualizan en el sitio
+- *Seguridad y privacidad:* 016 Seguridad y privacidad de un formulario público de candidatura
 
 ---
 
 ## ADR-001 · Stack y entorno local autocontenido
 
 **Decisión.** PHP 8.4, Symfony 8.1, Symfony Messenger sobre RabbitMQ, MongoDB, PHPUnit y Twig.
-Todo corre en Docker Compose: `php` (FPM), `caddy` (servidor web), `worker` (consumidor de
-Messenger), `mongo` y `rabbitmq`. `make init` construye las imágenes, instala dependencias,
-prepara los recursos y arranca el worker al final, cuando el código que ejecuta ya está instalado.
+Todo corre en Docker Compose: `php` (FPM), `caddy` (servidor web), dos workers de Messenger
+(`worker-events` y `worker-enrichment`, ver ADR-011), `mongo` y `rabbitmq`. `make init` construye
+las imágenes, instala dependencias, prepara los recursos y arranca los workers al final, cuando
+el código que ejecutan ya está instalado. CI ejecuta exactamente `make init`, `make security`,
+`make qa` y `make test`, así que el camino del revisor es el que está probado.
 
 **Por qué.** Es el stack con el que trabaja el equipo, así que el ejercicio enseña cómo
 trabajaría en su código real y no en un stack elegido para ahorrar esfuerzo. Con un solo
@@ -36,7 +39,10 @@ comando y sin más requisitos que Docker, revisarlo es fácil.
 **Notas.**
 - Los puertos del host evitan los valores por defecto (web `8080`, UI de RabbitMQ `15673`,
   Mongo `27018`) para poder convivir con otros proyectos locales. AMQP no se publica al host.
-- El contenedor corre con uid 1000; en CI se da permiso de escritura al checkout para ese usuario.
+- Los contenedores corren con el usuario del host (`make` pasa `id -u` e `id -g` como argumentos
+  de build), así que los ficheros escritos en el bind mount (`vendor/`, cachés) siguen siendo
+  editables en cualquier Linux y en CI.
+- Controles de calidad: php-cs-fixer, phpcs (PSR-12) y PHPStan a **nivel 8**, todo en `make qa`.
 
 ## ADR-002 · Symfony 8.1 en lugar de 8.0
 
@@ -69,8 +75,7 @@ imagen a `mongo:8` o posterior; no hace falta tocar código.
 
 **Contexto.** El 20 de octubre de 2026 el equipo de seguridad de PHP preanunció una release para
 el día 21 que corrige dos vulnerabilidades críticas del núcleo. Los detalles se filtraron antes
-(«php2shell») y esa misma mañana ya se informó de los primeros ataques. La release salió el día
-21, antes de las 14:00 UTC anunciadas:
+(«php2shell») y esa misma mañana ya se informó de los primeros ataques:
 
 | Aviso | CVE | Qué es | CVSS v4 |
 |---|---|---|---|
@@ -79,27 +84,30 @@ el día 21 que corrige dos vulnerabilidades críticas del núcleo. Los detalles 
 
 Corregidas en **8.2.35, 8.3.36, 8.4.27 y 8.5.12**. Actualizar es la única solución completa.
 
-**Estado (21-10-2026, 13:45 UTC).** PHP 8.4.27 está publicado en php.net, pero la imagen
-oficial `php:8.4.27-fpm` todavía no está en Docker Hub. La imagen se sigue construyendo desde
-`php:8.4-fpm`, que resuelve a **8.4.26 (vulnerable)**.
+**Cronología (21-10-2026).**
+- 13:35 UTC: el parche aún no ha salido; la imagen (`php:8.4-fpm`) está en 8.4.26, que es vulnerable.
+- ~13:37 UTC: PHP 8.4.27 se publica en php.net. La imagen de Docker todavía no.
+- Mientras tanto: se aplican una mitigación y una salvaguarda (abajo).
+- 16:46 UTC: `php:8.4.27-fpm` llega a Docker Hub y la imagen se fija en esa versión.
 
 **Decisión.**
-1. *Ya, como defensa en profundidad:* `docker/php/conf.d/security.ini` apaga lo que la
-   aplicación no necesita. El CV se pega como texto y la subida de ficheros está fuera de
-   alcance, así que se desactiva o se limita lo siguiente: `file_uploads=Off`,
-   `max_file_uploads=0`, `post_max_size=1M`, `session.upload_progress.enabled=0` y
-   `expose_php=Off`. Así se reduce la superficie multipart y de progreso de subida por la que
-   pasan los dos CVE. Es una mitigación, no la solución.
-2. *Una salvaguarda mientras tanto:* `make security` falla si el PHP de la imagen es anterior a
-   la 8.4.27. CI lo ejecuta como paso bloqueante y `make init` como aviso. Además, `make init`
-   construye con `--pull`, así que recoge la imagen base parcheada en cuanto Docker Hub la publique.
-3. *Cuando se publique la imagen:* fijar `PHP_VERSION=8.4.27` en `docker/php/Dockerfile`. Una
-   versión de parche exacta en lugar de la etiqueta flotante `8.4` evita que una imagen cacheada
-   siga en silencio con la versión vulnerable.
+1. **Fijar la versión de parche exacta** (`PHP_VERSION=8.4.27` en `docker/php/Dockerfile`), nunca
+   una etiqueta flotante: así una imagen cacheada no puede seguir en silencio con una versión
+   vulnerable, y cada actualización es un diff revisable.
+2. **Protegerse contra regresiones:** `make security` falla si el PHP de la imagen es anterior a
+   la última release de seguridad. En CI es un paso bloqueante y en `make init`, un aviso.
+3. **Defensa en profundidad que se mantiene tras actualizar:** `docker/php/conf.d/security.ini`
+   apaga lo que la aplicación no necesita. El CV se pega como texto y la subida de ficheros está
+   fuera de alcance, así que se aplican estos ajustes: `file_uploads=Off`, `max_file_uploads=0`,
+   `post_max_size=1M`, `session.upload_progress.enabled=0` y `expose_php=Off`. Con eso desaparece
+   la superficie multipart y de progreso de subida por la que entran los dos CVE.
+4. **Extensiones fijadas y compiladas desde las releases de GitHub** (mongodb 2.5.5, amqp 2.2.0,
+   pcov 1.0.12) en lugar de `pecl install`. El día de la release, pecl.php.net respondía 504 a la
+   mayoría de descargas, así que la imagen no se podía reconstruir con el parche. Fijar las
+   fuentes hace el build reproducible e independiente de la disponibilidad de PECL.
 
 **Por qué importa aquí.** La aplicación es un formulario público que acepta texto libre:
 justo la superficie sin autenticación y de parseo de peticiones a la que apuntan estos fallos.
-Apagar lo que no se usa cuesta poco y sigue siendo útil después de actualizar.
 
 ## ADR-005 · Un único bounded context, `Recruitment`, y el nombre `JobApplication`
 
@@ -161,6 +169,24 @@ tabla completa de transiciones.
 - *Una librería de máquina de estados (symfony/workflow)*: demasiado para cuatro estados y
   cinco transiciones.
 
+**Las excepciones siguen una regla.**
+- Una `\DomainException` (por ejemplo `InvalidJobApplicationDataException`) significa que la
+  *entrada* ha roto una regla de negocio. La capa HTTP se la muestra al usuario.
+- Una `\InvalidArgumentException` (`Score`, `Uuid`, `Position`, `CvAnalysis`) significa que se
+  ha roto un *contrato* entre piezas de código. Por ejemplo: el analizador devolvió un score de
+  140 después de validar el esquema, o la semilla tiene un puesto sin requisitos. Son bugs,
+  nunca errores del usuario.
+
+**Otras reglas.**
+- **El consentimiento es una invariante.** `JobApplication::submit()` se niega a crear una
+  candidatura sin el consentimiento de privacidad del candidato, sea cual sea el punto de entrada
+  (formulario, consola o una futura API). `appliedAt` registra cuándo se dio (ADR-016).
+- **Una versión que crece con cada cambio.** El agregado lleva un `version` (1 al enviarse, +1 en
+  cada transición; un rearranque que no hace nada no cuenta). Quien lee lo usa para saber cuál de
+  dos estados es más reciente (ADR-007).
+- **`Position` no hereda de `AggregateRoot`.** Esa clase base solo recoge eventos, y los puestos
+  todavía no registran ninguno.
+
 ## ADR-007 · Eventos ligeros y una proyección que relee el agregado
 
 **Decisión.** Los eventos de dominio llevan el id del agregado y los datos que han cambiado
@@ -186,6 +212,21 @@ serían eventos de integración, con payload completo y versionado.
 `$set score`): es el estilo habitual con event sourcing, pero necesita comprobar versiones
 para aguantar mensajes desordenados o duplicados. Más código y más formas de equivocarse, sin
 ganar nada aquí.
+
+**Concurrencia.**
+- *El hueco:* releer el agregado solo es independiente del orden mientras cada evento lo
+  proyecta un único consumidor, uno detrás de otro. Con varias réplicas de `worker-events`, un
+  proyector que leyó el agregado *antes* que otro puede escribir *después*, y una vista
+  `enriched` vuelve a `enriching`.
+- *La protección:* cada vista lleva la `version` del agregado y `save()` es un upsert condicional
+  (`{_id, version: {$lt: nueva}}`). Un estado más antiguo o igual choca por `_id` (clave
+  duplicada) y se descarta. Las proyecciones se pueden escalar y reproducir sin riesgo, y un test
+  de integración cubre el caso de la escritura obsoleta.
+- *Reconstrucciones:* el comando de rebuild usa `overwrite()`, que ignora la versión, así que un
+  cambio en cómo se construyen las vistas siempre se aplica.
+- *Evolución del esquema:* los documentos escritos antes de que existiera el campo `version` se
+  leen como versión 1 (modelo de escritura) o 0 (vistas), así que los datos antiguos siguen
+  funcionando hasta que se reescriben. Es una migración en lectura, lo habitual con MongoDB.
 
 ## ADR-008 · Casos de uso: comandos, queries y el flujo de enriquecimiento
 
@@ -242,6 +283,9 @@ puertos, como en los servicios del equipo: mocks cuando la interacción es lo qu
 stubs en el resto. Un publisher espía registra los eventos publicados y `MockClock` hace que el
 tiempo sea determinista.
 
+**Sin escrituras cuando no cambia nada.** Un enriquecimiento reintentado se encuentra la
+candidatura ya en `enriching`. El rearranque no hace nada (la versión no se mueve), así que no
+se guarda ni se publica nada antes de volver a intentar el análisis.
 
 ## ADR-009 · Solo MongoDB: una colección para escribir y otra para leer
 
@@ -289,9 +333,11 @@ forma explícita en `config/services.yaml`.
 - Las fechas BSON tienen precisión de milisegundos y no tienen zona horaria. Se guardan en UTC,
   y en el listado los empates dentro del mismo milisegundo se resuelven con el id UUID v7, que
   está ordenado por tiempo.
-- No hay bloqueo optimista. Todas las transiciones son idempotentes y solo el worker modifica
-  una candidatura después del envío, así que aquí no es realista tener escritores concurrentes.
-  Si los hubiera, bastaría con añadir un campo `version` al filtro del `replaceOne`.
+- Todavía no hay bloqueo optimista en el modelo de escritura. Todas las transiciones son
+  idempotentes y solo el worker de enriquecimiento modifica una candidatura después del envío.
+  El agregado ya lleva un `version` (ADR-006), así que añadirlo es un filtro en `replaceOne`
+  (`version: cargada`) más un reintento si hay conflicto. El modelo de lectura ya usa esa
+  versión (ADR-007).
 
 **Alternativas descartadas.** *Doctrine MongoDB ODM* (5.6, compatible con Symfony 8): se parece
 más al ORM que usa el equipo, pero obligaría a poner atributos en el dominio o a usar mapeos en
@@ -305,8 +351,11 @@ XML. Es más maquinaria de la que necesita el problema.
 - `DomainEvent` (la interfaz) se enruta al transport `events`, y `EnrichJobApplicationCommand`
   a `enrichment`. Cada uno tiene su propio exchange fanout y su cola en RabbitMQ. Todo lo demás
   es síncrono.
-- El worker consume `events enrichment` en ese orden, para que las proyecciones no queden
-  bloqueadas detrás de llamadas lentas a la IA.
+- **Un worker por cola** (`worker-events` y `worker-enrichment`). Un único
+  `messenger:consume events enrichment` solo da prioridad a `events` *entre* mensajes: mientras
+  espera a una llamada lenta a la IA, no se ejecuta ninguna proyección. Con workers separados
+  las proyecciones van rápidas y cada lado escala por su cuenta; las proyecciones pueden correr
+  en paralelo sin riesgo gracias a la protección por versión (ADR-007).
 - Los handlers publican *después* de guardar, a través del puerto `DomainEventPublisher`
   (adaptador: `MessengerDomainEventPublisher`).
 - Los mensajes usan el serializador PHP por defecto de Messenger: estas colas son privadas de
@@ -398,6 +447,10 @@ renderizado**, como haría un modelo real:
   lenguaje, versionado junto al prompt, que se puede pasar a los proveedores que admiten salida
   estructurada.
 
+**La salida estructurada se aprovecha, no se tira.** El análisis guarda `matched_skills` y
+`missing_skills` junto al resumen y el score, y el detalle los muestra como chips. Un recruiter
+ve de un vistazo qué requisitos cumple el CV y cuáles le faltan.
+
 ## ADR-014 · Cómo probar un sistema asíncrono
 
 **Decisión.**
@@ -431,6 +484,12 @@ reset, y las colas se comportan como un broker: enviar, ver la página de pendie
 worker y ver el resultado. `runWorker('events')` ejecuta solo las proyecciones, lo que permite
 ver una candidatura ya listada que todavía espera a la IA.
 
+**CI sigue el camino del revisor.** CI ejecuta `make init` y después `make security`, `make qa`
+y `make test` (que compila antes el CSS, porque las páginas enlazan la hoja de estilos
+compilada). Así queda demostrado que un clon limpio construye, arranca, pasa los controles de
+calidad y pasa los tests. Antes de esto, CI se saltaba la compilación del CSS y fallaba con un
+checkout limpio.
+
 ## ADR-015 · UI: páginas renderizadas en servidor que se actualizan en el sitio
 
 **Decisión.**
@@ -439,7 +498,7 @@ ver una candidatura ya listada que todavía espera a la IA.
   queries y comandos.
 - **El filtrado en tiempo real y el progreso usan fragmentos HTML.** Las URLs del listado y del
   detalle devuelven la página completa, o solo la parte que cambia cuando la petición lleva
-  `X-Requested-With: fetch`. De eso se encargan unas 120 líneas de JS vanilla
+  `X-Requested-With: fetch`. De eso se encargan unas 170 líneas de JS vanilla
   (`assets/js/live.js`):
   - los filtros recargan los resultados 250 ms después de escribir (al momento en los select);
   - un `AbortController` cancela las peticiones antiguas, para que los resultados nunca lleguen
@@ -479,8 +538,64 @@ ver una candidatura ya listada que todavía espera a la IA.
   la opción en Symfony). En un PoC, un polling cada 2 s que se detiene cuando no queda nada
   pendiente es más simple y no necesita infraestructura extra. Queda apuntado como trabajo futuro.
 - *Symfony UX Turbo/Stimulus*: harían lo mismo con menos JS propio, pero añaden un framework que
-  aprender para unas 120 líneas de código.
+  aprender para unas 170 líneas de código.
 
 **Fuera de alcance:** autenticación y roles (las páginas de candidato y de recruiter están
 abiertas), internacionalización (la UI está en inglés) y subida de ficheros (prohibida por el
 ejercicio).
+
+**Accesibilidad y resiliencia.**
+- *Accesibilidad:* la región de resultados no es `aria-live`; releer la lista entera cada 2 s
+  la haría inutilizable con un lector de pantalla. Una línea de estado oculta anuncia solo el
+  número de resultados, y solo cuando cambia.
+- *Tope de polling:* a los 5 minutos aproximadamente la página se detiene y avisa de que el
+  análisis está tardando más de lo normal (por ejemplo, si un worker está caído), en lugar de
+  consultar indefinidamente.
+- *Fallos en lenguaje claro:* cuando el cribado falla, se le dice al recruiter que el CV necesita
+  una revisión manual. El motivo técnico se conserva, plegado en «Technical details».
+- *El CSS como `<link>` normal:* importar el CSS desde JS se convierte en un módulo `data:` dentro
+  del importmap, que la Content-Security-Policy bloquea con razón (ADR-016). Hay un test que lo
+  vigila.
+
+## ADR-016 · Seguridad y privacidad de un formulario público de candidatura
+
+**Contexto.** El formulario de candidatura es público, anónimo y recibe datos personales (un CV),
+y cada envío cuesta una llamada a la IA. Los clientes de Viterbit están sujetos al RGPD.
+
+**Decisión.**
+
+*Abuso.*
+- **Límite de peticiones:** como mucho 5 candidaturas válidas por IP cliente en cualquier ventana
+  de 10 minutos (`symfony/rate-limiter`, ventana deslizante). Si se supera, se responde con un
+  429 y un mensaje claro. Solo cuentan los envíos válidos, porque son los que llegan a la cola de
+  la IA.
+- **Token CSRF** en el formulario. **Redirección 303** tras un envío correcto.
+
+*Endurecimiento en el navegador* (lo pone la aplicación y lo comprueban los tests).
+- **Content-Security-Policy con un nonce por petición:** solo se ejecutan nuestros scripts y los
+  scripts inline que llevan el nonce (el importmap). Además, `object-src 'none'`,
+  `frame-ancestors 'none'`, `form-action 'self'` y `base-uri 'self'`. Los estilos permiten
+  atributos inline, porque el anillo del score fija una variable CSS.
+- `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` y
+  una `Permissions-Policy` restrictiva.
+
+*Privacidad* (RGPD desde el diseño).
+- **Consentimiento explícito:** una casilla obligatoria explica que el CV se procesa para valorar
+  la candidatura, con un cribado automático que revisa un recruiter (no hay decisiones
+  exclusivamente automatizadas). El dominio rechaza las candidaturas sin consentimiento (ADR-006).
+- **Mínimos datos personales en tránsito:** los mensajes de las colas solo llevan ids; el CV y los
+  datos del candidato nunca salen de MongoDB.
+- **Sin sesiones para consultar:** ver el listado o abrir una candidatura no arranca una sesión.
+  Solo la usan el formulario (CSRF) y la página posterior al envío.
+- **Errores sin detalles internos:** los recruiters ven un mensaje claro, y el motivo técnico queda
+  plegado.
+- **Pendiente:** plazos de conservación y derecho de supresión (un caso de uso que borre o
+  anonimice las candidaturas y vistas de un candidato). Serían imprescindibles antes de salir a
+  producción.
+
+**Alternativas descartadas.**
+- *Cabeceras de seguridad en Caddy:* es más simple, pero la CSP necesita el nonce por petición, y
+  las cabeceras puestas desde la aplicación se pueden comprobar en tests funcionales.
+- *CAPTCHA:* más fricción para todos los candidatos. El límite de peticiones cubre el riesgo de
+  coste en un PoC; en producción añadiría una prueba de trabajo respetuosa con la privacidad (por
+  ejemplo ALTCHA) si apareciera abuso.

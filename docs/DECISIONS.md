@@ -12,15 +12,18 @@ The English version is canonical; the Spanish one is updated in the same commit.
 - *Application:* 008 Use cases: commands, queries and the enrichment flow
 - *Infrastructure:* 009 MongoDB only: one collection for writes, another for reads · 010 The official MongoDB driver instead of Doctrine ODM · 011 Messaging topology and publishing events · 012 Retries and the final failure · 013 The AI behind a port, simulated as if it were a real LLM
 - *Quality and UI:* 014 Testing an asynchronous system · 015 UI: server-rendered pages that update in place
+- *Security and privacy:* 016 Security and privacy of a public application form
 
 ---
 
 ## ADR-001 · Stack and a self-contained local environment
 
 **Decision.** PHP 8.4, Symfony 8.1, Symfony Messenger over RabbitMQ, MongoDB, PHPUnit, Twig.
-Everything runs in Docker Compose: `php` (FPM), `caddy` (web server), `worker` (Messenger
-consumer), `mongo` and `rabbitmq`. `make init` builds the images, installs dependencies,
-prepares runtime resources and starts the worker last, once the code it runs is installed.
+Everything runs in Docker Compose: `php` (FPM), `caddy` (web server), two Messenger workers
+(`worker-events`, `worker-enrichment`, see ADR-011), `mongo` and `rabbitmq`. `make init` builds
+the images, installs dependencies, prepares runtime resources and starts the workers last, once
+the code they run is installed. CI runs exactly `make init`, `make security`, `make qa` and
+`make test`, so the reviewer's path is the tested one.
 
 **Why.** It is the stack the team works with, so the exercise shows how I would work on the
 real codebase rather than in a stack chosen to minimise effort. One command and no host
@@ -36,7 +39,9 @@ requirements beyond Docker make it easy to review.
 **Notes.**
 - Host ports avoid the usual defaults (web `8080`, RabbitMQ UI `15673`, Mongo `27018`) so the
   stack can run next to other local projects. AMQP is not published to the host at all.
-- The container runs as uid 1000; CI makes the checkout writable for that user.
+- The containers run as the host user (`make` passes `id -u`/`id -g` as build arguments), so
+  files written in the bind mount (`vendor/`, caches) stay editable on any Linux machine and in CI.
+- Quality gates: php-cs-fixer, phpcs (PSR-12) and PHPStan at **level 8**, all in `make qa`.
 
 ## ADR-002 · Symfony 8.1 instead of 8.0
 
@@ -68,8 +73,7 @@ or later; no code change is needed.
 
 **Context.** On 20 Oct 2026 the PHP security team pre-announced a release for 21 Oct that fixes
 two critical vulnerabilities in PHP core. Details had leaked beforehand ("php2shell") and early
-attacks were reported the same morning. The release came out on 21 Oct, ahead of the announced
-14:00 UTC:
+attacks were reported the same morning:
 
 | Advisory | CVE | What it is | CVSS v4 |
 |---|---|---|---|
@@ -78,26 +82,30 @@ attacks were reported the same morning. The release came out on 21 Oct, ahead of
 
 Fixed in **8.2.35, 8.3.36, 8.4.27 and 8.5.12**. Upgrading is the only complete fix.
 
-**Status (21 Oct 2026, 13:45 UTC).** PHP 8.4.27 is published on php.net, but the official
-`php:8.4.27-fpm` Docker image is not available yet. The image is still built from
-`php:8.4-fpm`, which resolves to **8.4.26 (vulnerable)**.
+**Timeline (21 Oct 2026).**
+- 13:35 UTC: the fix is not out; the image (`php:8.4-fpm`) is 8.4.26, which is vulnerable.
+- ~13:37 UTC: PHP 8.4.27 is published on php.net. The Docker image is not.
+- Meanwhile: a mitigation and a guard are put in place (below).
+- 16:46 UTC: `php:8.4.27-fpm` lands on Docker Hub, and the image is pinned to it.
 
 **Decision.**
-1. *Now, defence in depth:* `docker/php/conf.d/security.ini` turns off what the app does not need.
-   The CV is pasted as text and file uploads are out of scope, so the following are off or
-   capped: `file_uploads=Off`, `max_file_uploads=0`, `post_max_size=1M`,
-   `session.upload_progress.enabled=0` and `expose_php=Off`. This shrinks the multipart and
-   upload-progress surface both CVEs go through. It is a mitigation, not a fix.
-2. *A guard until then:* `make security` fails when the PHP inside the image is older than
-   8.4.27. CI runs it as a blocking step, and `make init` runs it as a warning. `make init` also
-   builds with `--pull`, so it picks up the patched base image as soon as Docker Hub publishes it.
-3. *Once the image is published:* pin `PHP_VERSION=8.4.27` in `docker/php/Dockerfile`. An exact
-   patch version instead of the floating `8.4` tag means a cached image cannot silently keep the
-   vulnerable build.
+1. **Pin the exact patch version** (`PHP_VERSION=8.4.27` in `docker/php/Dockerfile`), never a
+   floating tag: a cached image cannot silently keep a vulnerable build, and every upgrade is a
+   reviewable diff.
+2. **Guard against regressions:** `make security` fails when the PHP in the image is older than
+   the last security release. It is a blocking step in CI and a warning in `make init`.
+3. **Defence in depth that stays after the upgrade:** `docker/php/conf.d/security.ini` turns off
+   what the app does not need. The CV is pasted as text and uploads are out of scope, so these
+   settings apply: `file_uploads=Off`, `max_file_uploads=0`, `post_max_size=1M`,
+   `session.upload_progress.enabled=0` and `expose_php=Off`. That removes the multipart and
+   upload-progress surface both CVEs go through.
+4. **Extensions pinned and built from GitHub releases** (mongodb 2.5.5, amqp 2.2.0, pcov 1.0.12)
+   instead of `pecl install`. The day of the release, pecl.php.net answered 504 to most
+   downloads, so the image could not be rebuilt with the fix. Pinned sources make the build
+   reproducible and independent of PECL's availability.
 
 **Why it matters here.** The app is a public form that accepts free text: exactly the
-unauthenticated, request-parsing surface these bugs target. Turning off unused features is
-cheap and stays useful after the upgrade.
+unauthenticated, request-parsing surface these bugs target.
 
 ## ADR-005 · One bounded context, `Recruitment`, and the name `JobApplication`
 
@@ -155,6 +163,24 @@ transition table.
 - *Status as a string with `if`s in each method*: the rules end up spread over the aggregate.
 - *A state machine library (symfony/workflow)*: too much for four states and five transitions.
 
+**Exceptions follow one rule.**
+- A `\DomainException` (e.g. `InvalidJobApplicationDataException`) means a business rule was
+  broken by *input*. The HTTP layer shows it to the user.
+- An `\InvalidArgumentException` (`Score`, `Uuid`, `Position`, `CvAnalysis`) means a *contract*
+  between pieces of code was broken. Examples: the analyzer returned a score of 140 after the
+  schema check, or the seed has a position without requirements. These are bugs, never user
+  errors.
+
+**Other rules.**
+- **Consent is an invariant.** `JobApplication::submit()` refuses to create an application
+  without the candidate's privacy consent, whatever the entry point (form, console, a future
+  API). `appliedAt` records when it was given (ADR-016).
+- **A version that grows on every change.** The aggregate carries a `version` (1 on
+  submission, +1 per transition; a no-op restart does not count). Readers use it to tell which
+  of two states is newer (ADR-007).
+- **`Position` does not extend `AggregateRoot`.** That base class only collects events, and
+  positions record none yet.
+
 ## ADR-007 · Lean events, and a projection that re-reads the aggregate
 
 **Decision.** Domain events carry the aggregate id and the facts that changed (the position
@@ -177,6 +203,21 @@ a full, versioned payload.
 **Alternatives discarded.** *Apply each event as a delta to the view* (`$set status`, `$set score`):
 the usual event-sourced style, but it needs version checks to survive out-of-order and
 duplicated messages. That is more code and more ways to be wrong, for no gain here.
+
+**Concurrency.**
+- *The gap:* re-reading alone is order-independent only while each event is projected by a
+  single consumer, one after another. With several `worker-events` replicas, a projector that
+  read the aggregate *before* another can write *after* it, which turns an `enriched` view back
+  into `enriching`.
+- *The guard:* every view carries the aggregate `version`, and `save()` is a conditional upsert
+  (`{_id, version: {$lt: new}}`). An older or equal state collides on `_id` (duplicate key) and
+  is dropped. Projections are safe to scale and to replay, and an integration test runs the
+  stale-write case.
+- *Rebuilds:* the rebuild command uses `overwrite()`, which ignores the version, so a change in
+  how views are built is always applied.
+- *Schema evolution:* documents written before the `version` field existed are read as
+  version 1 (write model) or 0 (views), so old data keeps working until it is rewritten.
+  This is migration on read, the usual approach with MongoDB.
 
 ## ADR-008 · Use cases: commands, queries and the enrichment flow
 
@@ -227,6 +268,9 @@ after the last retry ──▶ MarkEnrichmentAsFailed ──▶ EnrichmentHasFai
 team's services: mocks where the interaction is the assertion, stubs otherwise. A small spy
 publisher records the published events. `MockClock` makes time deterministic.
 
+**No writes for no-ops.** A retried enrichment finds the application already `enriching`. The
+restart is a no-op (the version does not move), so nothing is saved or published before the
+analysis is tried again.
 
 ## ADR-009 · MongoDB only: one collection for writes, another for reads
 
@@ -271,9 +315,10 @@ repository. Documents come back as plain arrays (`typeMap`), and every save is a
 **Trade-offs and details.**
 - BSON dates have millisecond precision and no time zone. Dates are stored in UTC, and the list
   breaks same-millisecond ties with the UUID v7 id, which is time-ordered.
-- No optimistic locking. Every transition is idempotent and only the worker changes an
-  application after submission, so concurrent writers are not a realistic case here. With
-  several writers, a `version` field in the `replaceOne` filter would add it.
+- No optimistic locking on the write model yet. Every transition is idempotent and only the
+  enrichment worker changes an application after submission. The aggregate already carries a
+  `version` (ADR-006), so adding it is a filter on `replaceOne` (`version: loaded`) plus a
+  retry on conflict. The read model already uses that version (ADR-007).
 
 **Alternatives discarded.** *Doctrine MongoDB ODM* (5.6, compatible with Symfony 8): closer to
 the ORM the team uses, but it would either put attributes on the domain or need XML mappings.
@@ -287,8 +332,11 @@ That is more machinery than the problem needs.
 - `DomainEvent` (the interface) is routed to the `events` transport, and
   `EnrichJobApplicationCommand` to `enrichment`. Each has its own fanout exchange and queue in
   RabbitMQ. Anything else is synchronous.
-- The worker consumes `events enrichment` in that order, so projections are not stuck behind
-  slow AI calls.
+- **One worker per queue** (`worker-events`, `worker-enrichment`). A single
+  `messenger:consume events enrichment` gives priority to `events` only *between* messages:
+  while it is waiting on a slow AI call, no projection runs. Separate workers keep projections
+  fast and let each side scale on its own; projections are safe to run in parallel thanks to
+  the version guard (ADR-007).
 - Handlers publish *after* saving, through the `DomainEventPublisher` port (adapter:
   `MessengerDomainEventPublisher`).
 - Messages use Messenger's default PHP serializer: these queues are private to this application.
@@ -373,6 +421,10 @@ rendered prompt**, as a real model would:
 - *Validating with PHP code instead of JSON Schema*: the schema is a language-neutral contract
   that is versioned next to the prompt and can be given to providers that support structured output.
 
+**The structured output is used, not thrown away.** The analysis keeps `matched_skills` and
+`missing_skills` next to the summary and score, and the detail page shows them as chips. A
+recruiter sees at a glance which requirements the CV meets and which it misses.
+
 ## ADR-014 · Testing an asynchronous system
 
 **Decision.**
@@ -404,6 +456,11 @@ selected by `KERNEL_CLASS` in `.env.test`) removes that reset, so queues behave 
 submit, see the pending page, run the worker, see the result. `runWorker('events')` runs only
 the projections, which shows a listed application still waiting for the AI.
 
+**CI is the reviewer's path.** CI runs `make init`, then `make security`, `make qa` and
+`make test` (which builds the CSS first, because the pages link the compiled stylesheet). A
+clean clone is therefore proven to build, start, pass quality checks and pass the tests. Before
+this, CI skipped the CSS build and failed on a clean checkout.
+
 ## ADR-015 · UI: server-rendered pages that update in place
 
 **Decision.**
@@ -411,7 +468,7 @@ the projections, which shows a listed application still waiting for the AI.
   invokable class per route (the team's convention) that only dispatches queries and commands.
 - **Real-time filtering and progress use HTML fragments.** The list and detail URLs return the
   full page, or only the part that changes when the request carries `X-Requested-With: fetch`.
-  About 120 lines of vanilla JS (`assets/js/live.js`) handle this:
+  About 170 lines of vanilla JS (`assets/js/live.js`) handle this:
   - filters reload the results 250 ms after typing (immediately for selects);
   - an `AbortController` cancels stale requests, so results never arrive out of order;
   - `history.replaceState` keeps the URL shareable;
@@ -448,7 +505,59 @@ the projections, which shows a listed application still waiting for the AI.
   would be the Symfony choice). For a PoC, a 2 s poll that stops when nothing is pending is
   simpler and has no extra infrastructure. It is listed for future work.
 - *Symfony UX Turbo/Stimulus*: they would do the same with less custom JS, but they add a
-  framework to learn for about 120 lines of code.
+  framework to learn for about 170 lines of code.
 
 **Not in scope:** authentication and roles (the candidate and recruiter pages are open),
 internationalisation (the UI is English), and file uploads (forbidden by the exercise).
+
+**Accessibility and resilience.**
+- *Accessibility:* the results region is not `aria-live`; re-reading the whole list every 2 s
+  would be unusable with a screen reader. A hidden status line announces only the result count,
+  and only when it changes.
+- *Polling cap:* after about 5 minutes the page stops and says the analysis is taking longer
+  than usual (for example, a worker is down), instead of polling forever.
+- *Failures in plain words:* a failed screening tells the recruiter the CV needs a manual
+  review. The technical reason is kept, folded under "Technical details".
+- *CSS as a plain `<link>`:* importing the CSS from JS turns into a `data:` module in the
+  importmap, which the Content-Security-Policy rightly blocks (ADR-016). A test guards against
+  this.
+
+## ADR-016 · Security and privacy of a public application form
+
+**Context.** The apply form is public, anonymous and accepts personal data (a CV), and every
+submission costs an AI call. Viterbit's customers are subject to GDPR.
+
+**Decision.**
+
+*Abuse.*
+- **Rate limiting:** at most 5 valid applications per client IP in any 10 minutes
+  (`symfony/rate-limiter`, sliding window). An excess gets 429 and a clear message. Only valid
+  submissions count, because those are the ones that reach the AI queue.
+- **CSRF token** on the form. **303 redirect** after a successful submission.
+
+*Browser hardening* (set by the app, asserted by tests).
+- **Content-Security-Policy with a per-request nonce:** only our own scripts and inline scripts
+  carrying the nonce run (the importmap). Also `object-src 'none'`, `frame-ancestors 'none'`,
+  `form-action 'self'` and `base-uri 'self'`. Styles allow inline attributes, because the score
+  ring sets a CSS variable.
+- `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`
+  and a restrictive `Permissions-Policy`.
+
+*Privacy* (GDPR by design).
+- **Explicit consent:** a required checkbox explains that the CV is processed to assess the
+  application, with an automated screening that a recruiter reviews (no solely automated
+  decision). The domain refuses applications without consent (ADR-006).
+- **Minimal personal data in transit:** queue messages carry ids only; the CV and the
+  candidate's details never leave MongoDB.
+- **No sessions for browsing:** listing and opening applications does not start a session.
+  Only the form (CSRF) and the post-submit page use one.
+- **Errors without internals:** recruiters see a plain message, and the technical reason is
+  folded away.
+- **Not done yet:** retention periods and the right to erasure (a use case that deletes or
+  anonymises a candidate's applications and views). These would be required before going live.
+
+**Alternatives discarded.**
+- *Security headers in Caddy:* simpler, but the CSP needs the per-request nonce, and headers set
+  in the app can be asserted in functional tests.
+- *CAPTCHA:* more friction for every candidate. Rate limiting covers the cost risk of a PoC; in
+  production I would add a privacy-friendly proof-of-work (e.g. ALTCHA) if abuse appeared.
