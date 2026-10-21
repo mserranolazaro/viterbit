@@ -1,0 +1,55 @@
+framework:
+    messenger:
+        default_bus: command.bus
+        buses:
+            command.bus: ~
+            query.bus: ~
+            # Domain events may have zero subscribers (e.g. EnrichmentWasStarted only feeds the projection).
+            event.bus:
+                default_middleware:
+                    allow_no_handlers: true
+
+        failure_transport: failed
+
+        transports:
+            # Domain events: one queue, every subscriber runs in the worker.
+            events:
+                dsn: '%env(RABBITMQ_DSN)%'
+                options:
+                    exchange: { name: ats.events, type: fanout }
+                    queues: { ats.events: ~ }
+                retry_strategy:
+                    max_retries: 3
+                    delay: 500
+                    multiplier: 2
+
+            # CV enrichment commands: its own queue and retry policy (an LLM call can fail transiently).
+            # 3 attempts in total: 1s, then 3s, then the message is given up and the application marked as failed.
+            enrichment:
+                dsn: '%env(RABBITMQ_DSN)%'
+                options:
+                    exchange: { name: ats.enrichment, type: fanout }
+                    queues: { ats.enrichment: ~ }
+                retry_strategy:
+                    max_retries: 2
+                    delay: 1000
+                    multiplier: 3
+
+            failed:
+                dsn: '%env(RABBITMQ_DSN)%'
+                options:
+                    exchange: { name: ats.failed, type: fanout }
+                    queues: { ats.failed: ~ }
+
+            sync: 'sync://'
+
+        routing: []
+
+when@test:
+    framework:
+        messenger:
+            # Everything runs inline so a functional test can follow the whole flow in one request.
+            transports:
+                events: 'sync://'
+                enrichment: 'sync://'
+                failed: 'in-memory://'
