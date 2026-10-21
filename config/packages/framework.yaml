@@ -5,6 +5,9 @@ framework:
     # Note that the session will be started ONLY if you read or write from it.
     session: true
 
+    # Session-based CSRF tokens for the application form.
+    csrf_protection: true
+
     #esi: true
     #fragments: true
 
