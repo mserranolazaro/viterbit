@@ -89,3 +89,89 @@ oficial `php:8.4.27-fpm` todavía no está en Docker Hub. La imagen se sigue con
 **Por qué importa aquí.** La aplicación es un formulario público que acepta texto libre:
 justo la superficie sin autenticación y de parseo de peticiones a la que apuntan estos fallos.
 Apagar lo que no se usa cuesta poco y sigue siendo útil después de actualizar.
+
+## ADR-005 · Un único bounded context, `Recruitment`, y el nombre `JobApplication`
+
+**Decisión.** Un solo bounded context, `Recruitment`, contiene los puestos, las candidaturas y
+su enriquecimiento IA. `SharedKernel` guarda las piezas base (raíz de agregado, evento de
+dominio, ids UUID). Las capas siguen la organización del equipo: `Domain/Write` (agregados,
+value objects, eventos, excepciones, puertos de repositorio, servicios de dominio),
+`Domain/Read` (modelo de lectura y su puerto), `Application` e `Infrastructure`.
+
+El agregado se llama **`JobApplication`**, no `Application`.
+
+**Por qué.**
+- Aquí todo comparte un mismo lenguaje (un candidato se postula a un puesto y recibe un score)
+  y cambia por los mismos motivos. Partirlo añadiría eventos de integración y capas de
+  traducción a un PoC sin quitar ningún acoplamiento.
+- La IA es un *puerto* de este contexto (`CvAnalyzer`), no un contexto propio: aquí no tiene
+  modelo ni lenguaje propios, es una capacidad que usa el dominio.
+- «Application» ya es el nombre de una capa. `Application/Command/Application/SubmitApplication`
+  es ambiguo cada vez que se lee; además, `JobApplication` es el término que usan los recruiters.
+
+**Alternativas descartadas.**
+- *Un contexto `Enrichment` (o `Screening`) aparte*: tendría sentido si el cribado tuviera
+  reglas, modelos o equipo propios. La estructura deja sitio para extraerlo.
+- *Un contexto `Position`*: en un ATS completo, los puestos pertenecen a otro contexto
+  (requisiciones, publicación). Aquí son datos de semilla de solo lectura.
+
+## ADR-006 · Un dominio puro: invariantes, una sola máquina de estados y el tiempo inyectado
+
+**Decisión.**
+- El dominio no tiene código de framework ni de persistencia. No lleva atributos de mapeo ni
+  servicios de Symfony, y queda excluido del autowiring. La única dependencia externa es
+  `symfony/uid`, para generar los ids UUID v7.
+- Los value objects imponen las invariantes. `Email`, `Candidate`, `CvText` (no vacío, como
+  mucho 20.000 caracteres, guardado tal cual), `Score` (0–100) y `CvAnalysis` no pueden existir
+  en un estado inválido.
+- Las transiciones de estado permitidas están en un solo sitio,
+  `JobApplicationStatus::canTransitionTo()`: `received → enriching → enriched | failed`, más
+  `received → failed` para las candidaturas que ni siquiera pueden empezar (por ejemplo, si
+  su puesto ya no existe). Los estados finales no admiten ninguna transición.
+- `startEnrichment()` sobre una candidatura que ya está en `enriching` no hace nada. Los
+  mensajes se entregan al menos una vez, así que un reintento tiene que ser inocuo.
+- El agregado nunca lee el reloj: cada método recibe `$now`. Así los tests son deterministas
+  sin mockear el tiempo, y los handlers pasan `ClockInterface::now()`.
+- Los ids son UUID v7 generados por el dominio: no hace falta ir a la base de datos y se
+  ordenan por fecha de creación.
+- `reconstitute()` reconstruye un agregado desde el almacenamiento sin registrar eventos;
+  `submit()` y las transiciones sí los registran.
+
+**Por qué.** Las reglas por las que preguntará el CTO (qué estados hay y cuál puede seguir a
+cuál) se pueden leer y probar en dos ficheros pequeños, sin arrancar nada. Los tests cubren la
+tabla completa de transiciones.
+
+**Alternativas descartadas.**
+- *Atributos de mapeo de Doctrine en las clases del dominio* (como en los servicios MySQL del
+  equipo): es pragmático, pero acopla el modelo a una librería de persistencia. Con MongoDB el
+  mapeo es lo bastante pequeño para escribirlo a mano en infraestructura (ver el ADR de
+  persistencia).
+- *El estado como string, con `if` en cada método*: las reglas acaban repartidas por el agregado.
+- *Una librería de máquina de estados (symfony/workflow)*: demasiado para cuatro estados y
+  cinco transiciones.
+
+## ADR-007 · Eventos ligeros y una proyección que relee el agregado
+
+**Decisión.** Los eventos de dominio llevan el id del agregado y los datos que han cambiado
+(el id del puesto al enviarse, el score al enriquecerse, el motivo al fallar), no el agregado
+entero. El modelo de lectura lo construye un proyector que, ante **cualquier** evento, carga el
+agregado actual y su puesto y **reemplaza** la vista completa (un upsert).
+
+**Por qué.**
+- *Idempotente*: la entrega es al menos una vez, y aplicar el mismo evento dos veces escribe
+  la misma vista.
+- *Independiente del orden*: los eventos se consumen de forma asíncrona, así que
+  `JobApplicationWasEnriched` puede procesarse antes que `JobApplicationWasSubmitted`. Releer
+  siempre escribe el estado más reciente.
+- *Reconstruible*: todo el modelo de lectura se puede regenerar desde el de escritura con un
+  comando de consola, tras un bug o un cambio de esquema.
+- *Contratos estables*: los eventos pequeños cambian menos que los agregados.
+
+**Contrapartida.** El proyector lee el modelo de escritura, así que queda acoplado a él. Es
+aceptable dentro de un mismo bounded context. Los eventos que salieran hacia otros servicios
+serían eventos de integración, con payload completo y versionado.
+
+**Alternativas descartadas.** *Aplicar cada evento como un delta sobre la vista* (`$set status`,
+`$set score`): es el estilo habitual con event sourcing, pero necesita comprobar versiones
+para aguantar mensajes desordenados o duplicados. Más código y más formas de equivocarse, sin
+ganar nada aquí.
