@@ -8,6 +8,9 @@ PHP = $(DC) exec -T php
 # First release with the fixes for CVE-2026-109618 and CVE-2026-109619 (ADR-004).
 PHP_MIN_VERSION = 8.4.27
 
+# Minimum line and method coverage of the default suite, enforced by make coverage and CI.
+COVERAGE_MIN = 90
+
 .DEFAULT_GOAL := help
 
 help: ## Show this help
@@ -51,6 +54,11 @@ sh: ## Shell inside the PHP container
 test: assets ## Unit, integration and functional tests (pages render the built CSS)
 	$(PHP) vendor/bin/phpunit --testsuite default --no-coverage
 
+coverage: assets ## Default suite with coverage (HTML in var/coverage/html); fails under COVERAGE_MIN
+	$(PHP) php -d pcov.enabled=1 vendor/bin/phpunit --testsuite default \
+		--coverage-clover var/coverage/clover.xml --coverage-html var/coverage/html --coverage-text --only-summary-for-coverage-text
+	$(PHP) php resources/ci/check-coverage.php var/coverage/clover.xml $(COVERAGE_MIN)
+
 acceptance: ## Acceptance tests in a real browser against the running stack (make init first)
 	$(DC) --profile e2e up -d --wait selenium
 	$(PHP) vendor/bin/phpunit --testsuite acceptance --no-coverage
@@ -66,4 +74,4 @@ security: ## Fail if the PHP runtime is older than the last security release
 hooks: ## Install the git pre-commit hook
 	git config core.hooksPath resources/git/hooks
 
-.PHONY: help init setup assets demo css up down logs sh test acceptance qa security hooks
+.PHONY: help init setup assets demo css up down logs sh test coverage acceptance qa security hooks

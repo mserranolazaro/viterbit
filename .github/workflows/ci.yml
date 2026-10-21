@@ -21,8 +21,8 @@ jobs:
       - name: Code quality
         run: make qa
 
-      - name: Tests
-        run: make test
+      - name: Tests with coverage (fails under 90 % of lines or methods)
+        run: make coverage
 
       - name: Acceptance tests (real Chrome against the running stack)
         run: make acceptance
