@@ -87,6 +87,7 @@ final class EnrichmentFlowTest extends IntegrationTestCase
             null,
             null,
             $cv,
+            true,
         ));
 
         /** @var string */

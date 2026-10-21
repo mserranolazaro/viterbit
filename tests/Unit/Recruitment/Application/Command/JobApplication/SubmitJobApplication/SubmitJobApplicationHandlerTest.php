@@ -48,6 +48,7 @@ final class SubmitJobApplicationHandlerTest extends TestCase
             null,
             null,
             'Backend developer with PHP.',
+            true,
         ));
 
         self::assertInstanceOf(JobApplication::class, $saved);
@@ -72,6 +73,7 @@ final class SubmitJobApplicationHandlerTest extends TestCase
             null,
             null,
             'CV',
+            true,
         ));
     }
 
@@ -88,6 +90,7 @@ final class SubmitJobApplicationHandlerTest extends TestCase
                 null,
                 null,
                 'CV',
+                true,
             ));
             self::fail('Expected the email to be rejected.');
         } catch (InvalidJobApplicationDataException) {

@@ -40,6 +40,11 @@ final class InvalidJobApplicationDataException extends \DomainException
         return new self(sprintf('The CV text cannot exceed %d characters.', $max));
     }
 
+    public static function privacyConsentRequired(): self
+    {
+        return new self('The candidate must accept the privacy notice to apply.');
+    }
+
     public static function notesTooLong(int $max): self
     {
         return new self(sprintf('The notes cannot exceed %d characters.', $max));

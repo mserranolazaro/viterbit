@@ -45,6 +45,7 @@ final class SubmitJobApplicationHandler
             Candidate::create($command->fullName, Email::fromString($command->email), $command->phone),
             $command->notes,
             CvText::fromString($command->cvText),
+            $command->privacyConsentGiven,
             $this->clock->now(),
         );
 

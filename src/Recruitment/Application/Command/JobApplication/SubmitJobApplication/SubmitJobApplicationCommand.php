@@ -13,6 +13,7 @@ final class SubmitJobApplicationCommand
         public readonly ?string $phone,
         public readonly ?string $notes,
         public readonly string $cvText,
+        public readonly bool $privacyConsentGiven,
     ) {
     }
 }

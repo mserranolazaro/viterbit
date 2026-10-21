@@ -34,14 +34,14 @@ trait InteractsWithTheApp
     /**
      * @template T of object
      *
-     * @param class-string<T> $id
+     * @param class-string<T> $type
      *
      * @return T
      */
-    protected static function service(string $id): object
+    protected static function service(string $type, ?string $id = null): object
     {
         /** @var T */
-        return self::getContainer()->get($id);
+        return self::getContainer()->get($id ?? $type);
     }
 
     /**

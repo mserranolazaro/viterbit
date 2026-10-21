@@ -57,10 +57,12 @@ final class SubmitDemoApplicationsCommand
     public function __invoke(SymfonyStyle $io): int
     {
         foreach (self::CANDIDATES as [$positionId, $name, $email, $cv]) {
-            $this->commandBus->dispatch(new SubmitJobApplicationCommand($positionId, $name, $email, null, null, $cv));
+            $this->commandBus->dispatch(
+                new SubmitJobApplicationCommand($positionId, $name, $email, null, null, $cv, privacyConsentGiven: true),
+            );
         }
 
-        $io->success(sprintf('%d applications submitted; the worker is enriching them now.', count(self::CANDIDATES)));
+        $io->success(sprintf('%d applications submitted; the workers enrich them now.', count(self::CANDIDATES)));
 
         return Command::SUCCESS;
     }

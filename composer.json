@@ -18,6 +18,7 @@
         "symfony/framework-bundle": "8.1.*",
         "symfony/messenger": "8.1.*",
         "symfony/monolog-bundle": "^4.1",
+        "symfony/rate-limiter": "8.1.*",
         "symfony/runtime": "8.1.*",
         "symfony/security-csrf": "8.1.*",
         "symfony/twig-bundle": "8.1.*",

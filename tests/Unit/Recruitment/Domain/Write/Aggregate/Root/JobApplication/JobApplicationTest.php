@@ -41,6 +41,7 @@ final class JobApplicationTest extends TestCase
             Candidate::create('Ada Lovelace', Email::fromString('ada@example.com'), null),
             '  Available from November  ',
             CvText::fromString('Backend developer with PHP and Symfony.'),
+            true,
             $this->now,
         );
 
@@ -61,6 +62,22 @@ final class JobApplicationTest extends TestCase
     public function testItStoresEmptyNotesAsNull(): void
     {
         self::assertNull($this->submittedApplication(notes: '   ')->notes());
+    }
+
+    public function testItCannotBeSubmittedWithoutPrivacyConsent(): void
+    {
+        $this->expectException(InvalidJobApplicationDataException::class);
+        $this->expectExceptionMessage('privacy notice');
+
+        JobApplication::submit(
+            JobApplicationId::generate(),
+            PositionId::generate(),
+            Candidate::create('Ada Lovelace', Email::fromString('ada@example.com'), null),
+            null,
+            CvText::fromString('CV'),
+            false,
+            $this->now,
+        );
     }
 
     public function testItRejectsNotesThatAreTooLong(): void
@@ -208,6 +225,7 @@ final class JobApplicationTest extends TestCase
             Candidate::create('Ada Lovelace', Email::fromString('ada@example.com'), '+34 600 000 000'),
             $notes,
             CvText::fromString('Backend developer with PHP and Symfony.'),
+            true,
             $this->now,
         );
     }

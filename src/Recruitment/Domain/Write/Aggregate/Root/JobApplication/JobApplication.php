@@ -42,14 +42,23 @@ final class JobApplication extends AggregateRoot
     ) {
     }
 
+    /**
+     * Personal data (the CV above all) is only processed with the candidate's consent, so an
+     * application cannot exist without it, whatever the entry point. appliedAt records when it was given.
+     */
     public static function submit(
         JobApplicationId $id,
         PositionId $positionId,
         Candidate $candidate,
         ?string $notes,
         CvText $cvText,
+        bool $privacyConsentGiven,
         \DateTimeImmutable $now,
     ): self {
+        if (!$privacyConsentGiven) {
+            throw InvalidJobApplicationDataException::privacyConsentRequired();
+        }
+
         $notes = $notes === null ? null : trim($notes);
         if ($notes !== null && mb_strlen($notes) > self::NOTES_MAX_LENGTH) {
             throw InvalidJobApplicationDataException::notesTooLong(self::NOTES_MAX_LENGTH);

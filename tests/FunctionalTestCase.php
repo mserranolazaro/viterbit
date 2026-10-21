@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests;
 
 use App\Tests\Support\InteractsWithTheApp;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -25,6 +26,8 @@ abstract class FunctionalTestCase extends WebTestCase
         $this->client->disableReboot();
         self::resetDatabase();
         self::seedPositions();
+        // Rate-limit counters survive between tests otherwise (the pool is on disk).
+        self::service(CacheItemPoolInterface::class, 'rate_limiter.cache')->clear();
     }
 
     protected function fragment(string $uri): string

@@ -58,6 +58,19 @@
                       {% if errors.notes is defined %}aria-invalid="true" aria-describedby="notes-error"{% endif %}>{{ values.notes ?? '' }}</textarea>
             {{ _self.field_error(errors, 'notes') }}
         </div>
+
+        <div class="field field--full">
+            <label class="consent" for="privacyConsent">
+                <input id="privacyConsent" name="privacyConsent" type="checkbox" value="1" required
+                       {% if values.privacyConsent ?? false %}checked{% endif %}
+                       {% if errors.privacyConsent is defined %}aria-invalid="true" aria-describedby="privacyConsent-error"{% endif %}>
+                <span>
+                    I agree that my details and CV are processed to assess this application. The CV is
+                    summarised and scored automatically; a recruiter reviews every application and makes the decision.
+                </span>
+            </label>
+            {{ _self.field_error(errors, 'privacyConsent') }}
+        </div>
     </div>
 
     <div class="flex flex-wrap items-center justify-between gap-3 pt-1">

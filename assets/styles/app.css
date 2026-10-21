@@ -441,6 +441,13 @@
     .field :where(input, select, textarea):focus { outline: none; border-color: var(--bv-primary); box-shadow: var(--bv-focus); }
     .field :where(input, textarea)[aria-invalid="true"] { border-color: var(--bv-danger); }
 
+    .consent {
+        display: flex; align-items: flex-start; gap: 10px;
+        font-size: 13.5px; line-height: 1.5; color: var(--bv-text-muted); cursor: pointer;
+    }
+    .consent input { width: 18px; height: 18px; margin-top: 1px; flex-shrink: 0; accent-color: var(--bv-primary); }
+    .consent input[aria-invalid="true"] { outline: 2px solid var(--bv-danger); outline-offset: 2px; }
+
     .input-group { position: relative; }
     .input-group > .material-symbols-rounded {
         position: absolute; left: 13px; top: 50%; transform: translateY(-50%);

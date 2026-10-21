@@ -12,6 +12,7 @@ use App\Recruitment\Infrastructure\Http\Request\SubmitJobApplicationRequest;
 use App\SharedKernel\Infrastructure\Http\UiController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolationInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -22,11 +23,17 @@ final class SubmitJobApplicationController extends UiController
     /** Lets the detail page tell "not projected yet" from "does not exist". */
     public const string JUST_SUBMITTED = 'just_submitted_application';
 
-    public function __invoke(string $id, Request $request, ValidatorInterface $validator): Response
-    {
-        /** @var PositionDetailResponse|null $position */
-        $position = $this->query(new GetPositionQuery($id))
-            ?? throw $this->createNotFoundException('Position not found.');
+    public function __invoke(
+        string $id,
+        Request $request,
+        ValidatorInterface $validator,
+        RateLimiterFactoryInterface $jobApplicationSubmissionLimiter,
+    ): Response {
+        $position = $this->query(new GetPositionQuery($id));
+        if (!$position instanceof PositionDetailResponse) {
+            throw $this->createNotFoundException('Position not found.');
+        }
+
         $form = SubmitJobApplicationRequest::fromRequest($request);
 
         if (!$this->isCsrfTokenValid('submit_application', $request->request->getString('_token'))) {
@@ -45,6 +52,16 @@ final class SubmitJobApplicationController extends UiController
             return $this->formWithErrors($position, $form, $errors);
         }
 
+        // Counted only for valid submissions: those are the ones that reach the AI queue.
+        $limit = $jobApplicationSubmissionLimiter->create($request->getClientIp() ?? 'unknown')->consume();
+        if (!$limit->isAccepted()) {
+            $minutes = max(1, (int) ceil(($limit->getRetryAfter()->getTimestamp() - time()) / 60));
+
+            return $this->formWithErrors($position, $form, [
+                'form' => sprintf('Too many applications from your network. Try again in %d minute(s).', $minutes),
+            ], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         try {
             /** @var string $jobApplicationId */
             $jobApplicationId = $this->command(new SubmitJobApplicationCommand(
@@ -54,6 +71,7 @@ final class SubmitJobApplicationController extends UiController
                 $form->phone,
                 $form->notes,
                 $form->cvText,
+                $form->privacyConsent,
             ));
         } catch (InvalidJobApplicationDataException $e) {
             return $this->formWithErrors($position, $form, ['form' => $e->getMessage()]);
@@ -73,11 +91,12 @@ final class SubmitJobApplicationController extends UiController
         PositionDetailResponse $position,
         SubmitJobApplicationRequest $form,
         array $errors,
+        int $status = Response::HTTP_UNPROCESSABLE_ENTITY,
     ): Response {
         return $this->render(
             'positions/show.html.twig',
             ['position' => $position, 'values' => $form->values(), 'errors' => $errors],
-            new Response(status: Response::HTTP_UNPROCESSABLE_ENTITY),
+            new Response(status: $status),
         );
     }
 }

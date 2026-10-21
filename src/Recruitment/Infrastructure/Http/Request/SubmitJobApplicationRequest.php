@@ -23,7 +23,7 @@ final class SubmitJobApplicationRequest
         #[Assert\NotBlank(message: 'We need an email to contact you.', normalizer: 'trim')]
         #[Assert\Email(message: 'This does not look like a valid email.')]
         public readonly string $email,
-        #[Assert\Regex(pattern: '/^\+?[0-9 ()\-]{6,20}$/', message: 'Use digits, spaces and an optional leading +.')]
+        #[Assert\Regex(pattern: Candidate::PHONE_PATTERN, message: 'Use digits, spaces and an optional leading +.')]
         public readonly string $phone,
         #[Assert\Length(
             max: JobApplication::NOTES_MAX_LENGTH,
@@ -33,6 +33,8 @@ final class SubmitJobApplicationRequest
         #[Assert\NotBlank(message: 'Paste your CV as text.', normalizer: 'trim')]
         #[Assert\Length(max: CvText::MAX_LENGTH, maxMessage: 'The CV cannot exceed {{ limit }} characters.')]
         public readonly string $cvText,
+        #[Assert\IsTrue(message: 'Please accept the privacy notice to apply.')]
+        public readonly bool $privacyConsent,
     ) {
     }
 
@@ -40,11 +42,18 @@ final class SubmitJobApplicationRequest
     {
         $field = static fn (string $name): string => trim($request->request->getString($name));
 
-        return new self($field('fullName'), $field('email'), $field('phone'), $field('notes'), $field('cvText'));
+        return new self(
+            $field('fullName'),
+            $field('email'),
+            $field('phone'),
+            $field('notes'),
+            $field('cvText'),
+            $request->request->getBoolean('privacyConsent'),
+        );
     }
 
     /**
-     * @return array<string, string>
+     * @return array<string, string|bool>
      */
     public function values(): array
     {

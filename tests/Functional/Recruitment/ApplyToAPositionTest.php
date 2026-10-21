@@ -8,6 +8,7 @@ use App\Recruitment\Infrastructure\Ai\SimulatedLlmClient;
 use App\Recruitment\Infrastructure\Console\SeedPositionsCommand;
 use App\Tests\FunctionalTestCase;
 use Symfony\Component\DomCrawler\Crawler;
+use Symfony\Component\DomCrawler\Field\ChoiceFormField;
 
 /**
  * The candidate's flow: fill the form, land on the application, watch it get enriched.
@@ -15,6 +16,11 @@ use Symfony\Component\DomCrawler\Crawler;
 final class ApplyToAPositionTest extends FunctionalTestCase
 {
     private const string POSITION = '/positions/' . SeedPositionsCommand::BACKEND_ENGINEER_ID;
+    private const array VALID = [
+        'fullName' => 'Ada Lovelace',
+        'email' => 'ada@example.com',
+        'cvText' => 'PHP developer',
+    ];
 
     public function testSubmittingCreatesAReceivedApplicationThatTheWorkerEnriches(): void
     {
@@ -101,15 +107,46 @@ final class ApplyToAPositionTest extends FunctionalTestCase
         self::assertSelectorTextContains('[role="alert"]', 'Enrichment failed after 3 attempt(s)');
     }
 
+    public function testItCannotApplyWithoutAcceptingThePrivacyNotice(): void
+    {
+        $crawler = $this->apply(self::VALID, consent: false);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame(
+            'Please accept the privacy notice to apply.',
+            $crawler->filter('#privacyConsent-error')->text(),
+        );
+        self::assertCount(0, self::transport('events')->getSent());
+    }
+
+    public function testItLimitsHowManyApplicationsOneClientCanSend(): void
+    {
+        for ($i = 1; $i <= 5; ++$i) {
+            $this->apply(self::VALID);
+            self::assertResponseStatusCodeSame(303, sprintf('Application %d should be accepted.', $i));
+        }
+
+        $this->apply(self::VALID);
+
+        self::assertResponseStatusCodeSame(429);
+        self::assertSelectorTextContains('[role="alert"]', 'Too many applications from your network');
+        self::assertCount(5, self::transport('events')->getSent());
+    }
+
     /**
      * Fills and submits the real form, CSRF token included.
      *
      * @param array<string, string> $values
      */
-    private function apply(array $values): Crawler
+    private function apply(array $values, bool $consent = true): Crawler
     {
         $crawler = $this->client->request('GET', self::POSITION);
+        $form = $crawler->selectButton('Submit application')->form($values);
+        $checkbox = $form['privacyConsent'];
+        if ($consent && $checkbox instanceof ChoiceFormField) {
+            $checkbox->tick();
+        }
 
-        return $this->client->submit($crawler->selectButton('Submit application')->form($values));
+        return $this->client->submit($form);
     }
 }

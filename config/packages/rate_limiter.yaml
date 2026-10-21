@@ -1,0 +1,15 @@
+framework:
+    cache:
+        pools:
+            rate_limiter.cache:
+                adapter: cache.app
+
+    rate_limiter:
+        # The application form is public and every submission costs an AI call:
+        # at most 5 applications per client IP in any 10-minute window.
+        job_application_submission:
+            policy: sliding_window
+            limit: 5
+            interval: '10 minutes'
+            cache_pool: rate_limiter.cache
+

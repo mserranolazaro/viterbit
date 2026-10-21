@@ -46,6 +46,7 @@ final class JobApplicationMother
             Candidate::create($fullName, Email::fromString($email), '+34 600 000 000'),
             'Available from November',
             CvText::fromString('Backend developer with PHP, Symfony and MongoDB.'),
+            true,
             $appliedAt,
         );
         $jobApplication->pullDomainEvents();

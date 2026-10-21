@@ -9,7 +9,8 @@ use App\Recruitment\Domain\Write\Exception\JobApplication\InvalidJobApplicationD
 final readonly class Candidate
 {
     public const int FULL_NAME_MAX_LENGTH = 120;
-    private const string PHONE_PATTERN = '/^\+?[0-9 ()\-]{6,20}$/';
+    /** Shared with the HTTP form validation, so both layers accept exactly the same numbers. */
+    public const string PHONE_PATTERN = '/^\+?[0-9 ()\-]{6,20}$/';
 
     private function __construct(
         private string $fullName,

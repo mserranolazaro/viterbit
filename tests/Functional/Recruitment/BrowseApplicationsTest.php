@@ -110,7 +110,7 @@ final class BrowseApplicationsTest extends FunctionalTestCase
                 [SeedPositionsCommand::FRONTEND_ENGINEER_ID, 'Sara Soueidan', 'sara@example.net', self::SARA_CV],
             ];
             foreach ($candidates as [$positionId, $name, $email, $cv]) {
-                $bus->dispatch(new SubmitJobApplicationCommand($positionId, $name, $email, null, null, $cv));
+                $bus->dispatch(new SubmitJobApplicationCommand($positionId, $name, $email, null, null, $cv, true));
                 $clock->modify('+1 hour');
             }
         } finally {
