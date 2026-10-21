@@ -42,6 +42,7 @@ final class JobApplicationViewProjectorTest extends TestCase
         self::assertEquals($enrichedAt, $view->enrichedAt);
         self::assertEquals($jobApplication->appliedAt(), $view->appliedAt);
         self::assertSame('ada lovelace ada@example.com', $view->searchText);
+        self::assertSame(3, $view->version);
     }
 
     public function testItProjectsAReceivedApplicationWithoutEnrichment(): void

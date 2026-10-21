@@ -10,6 +10,7 @@ use App\Recruitment\Domain\Read\JobApplicationViewPage;
 use App\Recruitment\Domain\Read\JobApplicationViewRepository;
 use App\SharedKernel\Infrastructure\Mongo\MongoDates;
 use MongoDB\BSON\Regex;
+use MongoDB\Driver\Exception\BulkWriteException;
 use MongoDB\Collection;
 use MongoDB\Database;
 
@@ -19,6 +20,7 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
 
     /** Newest first; the id (UUID v7, time-ordered) breaks ties within the same millisecond. */
     private const array NEWEST_FIRST = ['appliedAt' => -1, '_id' => -1];
+    private const int DUPLICATE_KEY = 11000;
 
     private Collection $collection;
 
@@ -40,6 +42,23 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
     }
 
     public function save(JobApplicationView $view): void
+    {
+        try {
+            // Matches only an older version (or nothing, and then inserts). With a newer or equal
+            // version stored, the upsert collides on _id and the stale view is dropped.
+            $this->collection->replaceOne(
+                ['_id' => $view->id, 'version' => ['$lt' => $view->version]],
+                $this->toDocument($view),
+                ['upsert' => true],
+            );
+        } catch (BulkWriteException $e) {
+            if (!self::isDuplicateKey($e)) {
+                throw $e;
+            }
+        }
+    }
+
+    public function overwrite(JobApplicationView $view): void
     {
         $this->collection->replaceOne(['_id' => $view->id], $this->toDocument($view), ['upsert' => true]);
     }
@@ -87,6 +106,17 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
         );
     }
 
+    private static function isDuplicateKey(BulkWriteException $e): bool
+    {
+        foreach ($e->getWriteResult()->getWriteErrors() as $error) {
+            if ($error->getCode() === self::DUPLICATE_KEY) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -110,6 +140,7 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
             'updatedAt' => MongoDates::toBson($view->updatedAt),
             'enrichedAt' => $view->enrichedAt === null ? null : MongoDates::toBson($view->enrichedAt),
             'searchText' => $view->searchText,
+            'version' => $view->version,
         ];
     }
 
@@ -135,6 +166,7 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
             appliedAt: MongoDates::fromBson($document['appliedAt']),
             updatedAt: MongoDates::fromBson($document['updatedAt']),
             enrichedAt: MongoDates::fromNullableBson($document['enrichedAt']),
+            version: $document['version'],
         );
     }
 }

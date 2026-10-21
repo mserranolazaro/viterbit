@@ -86,6 +86,7 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
                 'enrichedAt' => MongoDates::toBson($enrichment->enrichedAt),
             ],
             'failureReason' => $jobApplication->failureReason(),
+            'version' => $jobApplication->version(),
         ];
     }
 
@@ -115,6 +116,7 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
                 MongoDates::fromBson($enrichment['enrichedAt']),
             ),
             $document['failureReason'],
+            $document['version'],
         );
     }
 }

@@ -7,9 +7,15 @@ namespace App\Recruitment\Domain\Read;
 interface JobApplicationViewRepository
 {
     /**
-     * Inserts or replaces the whole view, so applying it twice is harmless.
+     * Inserts or replaces the whole view, unless the stored one is already as new
+     * (same or higher version): applying it twice, or out of order, is harmless.
      */
     public function save(JobApplicationView $view): void;
+
+    /**
+     * Replaces the view whatever its version, for rebuilding the read model.
+     */
+    public function overwrite(JobApplicationView $view): void;
 
     public function findById(string $id): ?JobApplicationView;
 

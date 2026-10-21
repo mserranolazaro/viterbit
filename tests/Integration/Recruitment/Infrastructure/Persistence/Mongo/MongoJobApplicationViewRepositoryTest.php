@@ -91,6 +91,37 @@ final class MongoJobApplicationViewRepositoryTest extends IntegrationTestCase
         self::assertSame('2026-10-01 09:05', $view->enrichedAt?->format('Y-m-d H:i'));
     }
 
+    public function testAStaleViewNeverOverwritesANewerOne(): void
+    {
+        $id = '019a0a20-0000-7000-8000-00000000000f';
+        $newer = $this->graceView('enriched', version: 3);
+        $older = $this->graceView('enriching', version: 2);
+
+        // A slower projection of an earlier state arrives after the latest one…
+        $this->repository->save($newer);
+        $this->repository->save($older);
+        $this->repository->save($newer);
+
+        // …and is ignored: the view keeps the newest state, and replaying the same one is harmless.
+        self::assertSame('enriched', $this->repository->findById($id)?->status);
+        self::assertSame(3, $this->repository->findById($id)->version);
+    }
+
+    public function testOverwritingIgnoresTheVersionForRebuilds(): void
+    {
+        $id = '019a0a20-0000-7000-8000-00000000000f';
+        $this->repository->save($this->graceView('enriched', version: 3, name: 'Grace'));
+
+        $this->repository->overwrite($this->graceView('enriched', version: 3));
+
+        self::assertSame('Grace Hopper', $this->repository->findById($id)?->candidateName);
+    }
+
+    private function graceView(string $status, int $version, string $name = 'Grace Hopper'): JobApplicationView
+    {
+        return $this->view('f', $name, 'grace@navy.mil', self::BACKEND, $status, '2026-10-05 09:00', $version);
+    }
+
     /**
      * @return string[]
      */
@@ -109,6 +140,7 @@ final class MongoJobApplicationViewRepositoryTest extends IntegrationTestCase
         string $positionId,
         string $status,
         string $appliedAt,
+        int $version = 1,
     ): JobApplicationView {
         $id = self::ID_PREFIX . $idSuffix;
         $applied = new \DateTimeImmutable($appliedAt);
@@ -131,6 +163,7 @@ final class MongoJobApplicationViewRepositoryTest extends IntegrationTestCase
             appliedAt: $applied,
             updatedAt: $applied,
             enrichedAt: $enriched ? $applied->modify('+5 minutes') : null,
+            version: $version,
         );
     }
 }

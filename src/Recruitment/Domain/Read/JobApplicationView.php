@@ -29,6 +29,7 @@ final readonly class JobApplicationView
         public \DateTimeImmutable $appliedAt,
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $enrichedAt,
+        public int $version,
     ) {
         $this->searchText = mb_strtolower($candidateName . ' ' . $email);
     }

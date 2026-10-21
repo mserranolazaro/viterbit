@@ -29,7 +29,7 @@ final class RebuildJobApplicationViewsCommand
     {
         $count = 0;
         foreach ($this->jobApplicationRepository->all() as $jobApplication) {
-            $this->viewRepository->save($this->projector->viewOf($jobApplication));
+            $this->viewRepository->overwrite($this->projector->viewOf($jobApplication));
             ++$count;
         }
 

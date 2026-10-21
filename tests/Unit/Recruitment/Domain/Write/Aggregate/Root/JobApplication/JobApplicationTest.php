@@ -178,10 +178,26 @@ final class JobApplicationTest extends TestCase
             $this->now,
             null,
             null,
+            2,
         );
 
         self::assertSame(JobApplicationStatus::Enriching, $jobApplication->status());
+        self::assertSame(2, $jobApplication->version());
         self::assertSame([], $jobApplication->pullDomainEvents());
+    }
+
+    public function testItsVersionGrowsWithEveryChange(): void
+    {
+        $jobApplication = $this->submittedApplication();
+        self::assertSame(1, $jobApplication->version());
+
+        $jobApplication->startEnrichment($this->now);
+        $jobApplication->startEnrichment($this->now);
+        self::assertSame(2, $jobApplication->version(), 'A no-op restart does not count as a change.');
+
+        $analysis = new CvAnalysis('Summary.', Score::fromInt(50), 'cv_analysis.v1');
+        $jobApplication->completeEnrichment($analysis, $this->now);
+        self::assertSame(3, $jobApplication->version());
     }
 
     private function submittedApplication(?string $notes = null): JobApplication

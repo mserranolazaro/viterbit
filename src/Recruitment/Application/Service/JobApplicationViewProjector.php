@@ -59,6 +59,7 @@ final class JobApplicationViewProjector
             appliedAt: $jobApplication->appliedAt(),
             updatedAt: $jobApplication->updatedAt(),
             enrichedAt: $enrichment?->enrichedAt,
+            version: $jobApplication->version(),
         );
     }
 }

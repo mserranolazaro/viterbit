@@ -38,6 +38,7 @@ final class JobApplication extends AggregateRoot
         private \DateTimeImmutable $updatedAt,
         private ?Enrichment $enrichment,
         private ?string $failureReason,
+        private int $version,
     ) {
     }
 
@@ -65,6 +66,7 @@ final class JobApplication extends AggregateRoot
             $now,
             null,
             null,
+            1,
         );
 
         $jobApplication->record(new JobApplicationWasSubmitted($id->value(), $positionId->value(), $now));
@@ -86,6 +88,7 @@ final class JobApplication extends AggregateRoot
         \DateTimeImmutable $updatedAt,
         ?Enrichment $enrichment,
         ?string $failureReason,
+        int $version,
     ): self {
         return new self(
             $id,
@@ -98,6 +101,7 @@ final class JobApplication extends AggregateRoot
             $updatedAt,
             $enrichment,
             $failureReason,
+            $version,
         );
     }
 
@@ -134,6 +138,7 @@ final class JobApplication extends AggregateRoot
 
         $this->status = $next;
         $this->updatedAt = $now;
+        ++$this->version;
     }
 
     public function id(): JobApplicationId
@@ -184,5 +189,14 @@ final class JobApplication extends AggregateRoot
     public function failureReason(): ?string
     {
         return $this->failureReason;
+    }
+
+    /**
+     * Grows by one on every change, so readers can tell which of two states is newer
+     * (the projection uses it to never overwrite a view with an older one).
+     */
+    public function version(): int
+    {
+        return $this->version;
     }
 }
