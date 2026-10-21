@@ -1,0 +1,12 @@
+{% extends 'layouts/shell.html.twig' %}
+{% import 'ui/_macros.html.twig' as ui %}
+
+{% block title %}{{ application ? application.candidateName : 'New application' }}{% endblock %}
+
+{% block content %}
+<a href="{{ path('job_application_list') }}" class="back-link">{{ ui.icon('arrow_back') }} All applications</a>
+
+<div id="detail" data-live-region>
+    {{ include('applications/_detail.html.twig') }}
+</div>
+{% endblock %}

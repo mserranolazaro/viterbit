@@ -1,5 +1,8 @@
 twig:
     file_name_pattern: '*.twig'
+    # Dates are stored in UTC and shown in the recruiters' time zone.
+    date:
+        timezone: Europe/Madrid
 
 when@test:
     twig:

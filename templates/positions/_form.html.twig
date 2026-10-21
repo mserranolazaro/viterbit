@@ -1,0 +1,67 @@
+{# Plain HTML form: works without JavaScript; errors come back from the server (422). #}
+{% import 'ui/_macros.html.twig' as ui %}
+{% set errors = errors ?? {} %}
+{% set values = values ?? {} %}
+
+<form method="post" action="{{ path('job_application_submit', {id: position.id}) }}" class="grid gap-4" novalidate>
+    <input type="hidden" name="_token" value="{{ csrf_token('submit_application') }}">
+
+    {% if errors is not empty %}
+        <div class="alert alert--error" role="alert">
+            {{ ui.icon('error') }}
+            <p class="alert__text">{{ errors.form ?? 'Please review the highlighted fields.' }}</p>
+        </div>
+    {% endif %}
+
+    {% macro field_error(errors, name) %}
+        {% if errors[name] is defined %}<p class="field__error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
+    {% endmacro %}
+
+    <div class="form-grid">
+        <div class="field field--full">
+            <label class="field__label" for="fullName">Full name</label>
+            <input id="fullName" name="fullName" type="text" autocomplete="name" maxlength="120" required
+                   value="{{ values.fullName ?? '' }}"
+                   {% if errors.fullName is defined %}aria-invalid="true" aria-describedby="fullName-error"{% endif %}>
+            {{ _self.field_error(errors, 'fullName') }}
+        </div>
+
+        <div class="field">
+            <label class="field__label" for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required
+                   value="{{ values.email ?? '' }}"
+                   {% if errors.email is defined %}aria-invalid="true" aria-describedby="email-error"{% endif %}>
+            {{ _self.field_error(errors, 'email') }}
+        </div>
+
+        <div class="field">
+            <label class="field__label" for="phone">Phone <span class="field__optional">(optional)</span></label>
+            <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="30"
+                   value="{{ values.phone ?? '' }}"
+                   {% if errors.phone is defined %}aria-invalid="true" aria-describedby="phone-error"{% endif %}>
+            {{ _self.field_error(errors, 'phone') }}
+        </div>
+
+        <div class="field field--full">
+            <label class="field__label" for="cvText">CV</label>
+            <textarea id="cvText" name="cvText" rows="12" maxlength="20000" required
+                      placeholder="Paste your CV as plain text: experience, skills, education…"
+                      {% if errors.cvText is defined %}aria-invalid="true" aria-describedby="cvText-error"{% else %}aria-describedby="cvText-hint"{% endif %}>{{ values.cvText ?? '' }}</textarea>
+            <p class="field__hint" id="cvText-hint">Plain text only, up to 20,000 characters. No file uploads.</p>
+            {{ _self.field_error(errors, 'cvText') }}
+        </div>
+
+        <div class="field field--full">
+            <label class="field__label" for="notes">Notes <span class="field__optional">(optional)</span></label>
+            <textarea id="notes" name="notes" rows="3" maxlength="2000"
+                      placeholder="Availability, salary expectations, anything else…"
+                      {% if errors.notes is defined %}aria-invalid="true" aria-describedby="notes-error"{% endif %}>{{ values.notes ?? '' }}</textarea>
+            {{ _self.field_error(errors, 'notes') }}
+        </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+        <p class="field__hint">Your CV is summarised and scored by a (simulated) AI right after you apply.</p>
+        <button type="submit" class="btn btn--primary btn--lg">{{ ui.icon('send') }} Submit application</button>
+    </div>
+</form>

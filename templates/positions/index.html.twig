@@ -1,0 +1,42 @@
+{% extends 'layouts/shell.html.twig' %}
+{% import 'ui/_macros.html.twig' as ui %}
+
+{% block title %}Open positions{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <div>
+        <p class="page-header__eyebrow">Careers</p>
+        <h1 class="page-header__title">Open positions</h1>
+        <p class="page-header__sub">Pick a role, paste your CV and we will get back to you. Every application is screened against the role's requirements.</p>
+    </div>
+</header>
+
+{% if positions is empty %}
+    <div class="card">
+        {{ ui.empty_state('work', 'No open positions', 'Load the sample positions with "make setup".') }}
+    </div>
+{% else %}
+    <div class="grid gap-5 md:grid-cols-2">
+        {% for position in positions %}
+            <a href="{{ path('position_show', {id: position.id}) }}" class="card card--pad flex flex-col gap-4">
+                <div class="flex items-start gap-3.5">
+                    <span class="icon-bubble">{{ ui.icon('work') }}</span>
+                    <div class="min-w-0">
+                        <h2 class="text-[17px] font-extrabold">{{ position.title }}</h2>
+                        <p class="mt-0.5 flex items-center gap-1 text-[13.5px] text-muted">{{ ui.icon('place', '!text-[16px]') }} {{ position.location }}</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-1.5" aria-label="Must-have skills">
+                    {% for skill in position.mustHaveSkills %}
+                        <span class="chip chip--primary">{{ skill }}</span>
+                    {% endfor %}
+                </div>
+                <span class="mt-auto inline-flex items-center gap-1 text-[14px] font-bold text-primary">
+                    View and apply {{ ui.icon('arrow_forward', '!text-[18px]') }}
+                </span>
+            </a>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

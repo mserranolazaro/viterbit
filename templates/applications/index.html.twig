@@ -1,0 +1,52 @@
+{% extends 'layouts/shell.html.twig' %}
+{% import 'ui/_macros.html.twig' as ui %}
+
+{% block title %}Applications{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <div>
+        <p class="page-header__eyebrow">Recruiters</p>
+        <h1 class="page-header__title">Applications</h1>
+        <p class="page-header__sub">Newest first. Filters and search apply as you type; scores appear as soon as the AI finishes.</p>
+    </div>
+</header>
+
+{# A plain GET form: without JavaScript it submits and reloads; with it, results refresh in place. #}
+<form method="get" action="{{ path('job_application_list') }}" class="card card--pad mb-5 grid grid-cols-2 items-end gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto]"
+      role="search" data-live-filters="results">
+    <div class="field col-span-2 md:col-span-1">
+        <label class="field__label" for="q">Search</label>
+        <div class="input-group">
+            {{ ui.icon('search') }}
+            <input id="q" name="q" type="search" value="{{ filters.q }}" placeholder="Name or email" autocomplete="off">
+        </div>
+    </div>
+    <div class="field">
+        <label class="field__label" for="status">Status</label>
+        <select id="status" name="status">
+            <option value="">Any status</option>
+            {% for value, label in {received: 'Received', enriching: 'Analysing CV', enriched: 'Enriched', failed: 'Failed'} %}
+                <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label class="field__label" for="position">Position</label>
+        <select id="position" name="position">
+            <option value="">Any position</option>
+            {% for position in positions %}
+                <option value="{{ position.id }}" {% if filters.position == position.id %}selected{% endif %}>{{ position.title }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-span-2 flex gap-2 md:col-span-1">
+        <noscript><button type="submit" class="btn btn--tonal">{{ ui.icon('tune') }} Apply</button></noscript>
+        <a href="{{ path('job_application_list') }}" class="btn btn--ghost" data-live-reset>{{ ui.icon('close') }} Clear</a>
+    </div>
+</form>
+
+<section class="card" id="results" data-live-region aria-live="polite">
+    {{ include('applications/_results.html.twig') }}
+</section>
+{% endblock %}

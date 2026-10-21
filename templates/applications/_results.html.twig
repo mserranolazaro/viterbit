@@ -1,0 +1,56 @@
+{#
+    The list itself. Rendered inside the page and returned alone to fetch() requests,
+    so the server is the only place that knows how a row looks.
+#}
+{% import 'ui/_macros.html.twig' as ui %}
+{% set pending = page.items|filter(v => v.status in ['received', 'enriching'])|length > 0 %}
+{% set query = app.request.query.all|filter((v, k) => v is not empty and k != 'page') %}
+
+<div class="card__header" {% if pending %}data-pending{% endif %}>
+    <h2 class="card__title">{{ ui.icon('groups') }} {{ page.total }} {{ page.total == 1 ? 'application' : 'applications' }}</h2>
+    {% if pending %}
+        <span class="inline-flex items-center gap-2 text-[13px] font-semibold text-muted"><span class="live-dot"></span> Updating as the AI finishes</span>
+    {% endif %}
+</div>
+
+{% if page.items is empty %}
+    {% if query is empty %}
+        {{ ui.empty_state('inbox', 'No applications yet', 'They will show up here, newest first, as candidates apply.', '<a class="btn btn--tonal" href="' ~ path('position_list') ~ '">See open positions</a>') }}
+    {% else %}
+        {{ ui.empty_state('person_search', 'No matches', 'Nothing matches these filters. Try another name, status or position.') }}
+    {% endif %}
+{% else %}
+    <ul class="entries mt-3">
+        {% for application in page.items %}
+            <li>
+                <a href="{{ path('job_application_show', {id: application.id}) }}" class="entry">
+                    <span class="avatar" aria-hidden="true">{{ ui.initials(application.candidateName) }}</span>
+                    <div class="entry__main">
+                        <span class="entry__title">{{ application.candidateName }}</span>
+                        <span class="entry__meta">
+                            <span>{{ ui.icon('work') }} {{ application.positionTitle }}</span>
+                            <span class="min-w-0 truncate">{{ ui.icon('mail') }} {{ application.email }}</span>
+                            <span>{{ ui.icon('event') }} {{ ui.date(application.appliedAt) }}</span>
+                        </span>
+                    </div>
+                    <div class="entry__side">
+                        {{ ui.status_chip(application.status) }}
+                        {{ ui.score(application.score) }}
+                    </div>
+                </a>
+            </li>
+        {% endfor %}
+    </ul>
+
+    {% if page.totalPages > 1 %}
+        <nav class="pagination" aria-label="Pages">
+            {% if page.page > 1 %}
+                <a class="btn btn--ghost btn--sm" rel="prev" data-live-link href="{{ path('job_application_list', query|merge({page: page.page - 1})) }}">{{ ui.icon('chevron_left') }} Previous</a>
+            {% else %}<span></span>{% endif %}
+            <span class="pagination__pages">Page {{ page.page }} of {{ page.totalPages }}</span>
+            {% if page.page < page.totalPages %}
+                <a class="btn btn--ghost btn--sm" rel="next" data-live-link href="{{ path('job_application_list', query|merge({page: page.page + 1})) }}">Next {{ ui.icon('chevron_right') }}</a>
+            {% else %}<span></span>{% endif %}
+        </nav>
+    {% endif %}
+{% endif %}

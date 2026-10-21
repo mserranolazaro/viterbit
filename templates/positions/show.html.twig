@@ -1,0 +1,47 @@
+{% extends 'layouts/shell.html.twig' %}
+{% import 'ui/_macros.html.twig' as ui %}
+
+{% block title %}{{ position.title }}{% endblock %}
+
+{% block content %}
+<a href="{{ path('position_list') }}" class="back-link">{{ ui.icon('arrow_back') }} All positions</a>
+
+<header class="page-header">
+    <div>
+        <p class="page-header__eyebrow">{{ position.location }}</p>
+        <h1 class="page-header__title">{{ position.title }}</h1>
+    </div>
+</header>
+
+<div class="grid items-start gap-5 lg:grid-cols-12">
+    <section class="card lg:col-span-5 lg:sticky lg:top-[calc(var(--bv-topbar-height)+12px)]" aria-labelledby="about-role">
+        <div class="card__header"><h2 class="card__title" id="about-role">{{ ui.icon('description') }} About the role</h2></div>
+        <div class="card__body grid gap-5">
+            <p class="prose-text">{{ position.description }}</p>
+            <div class="grid gap-2">
+                <h3 class="text-[12px] font-extrabold uppercase tracking-[.08em] text-subtle">Must have</h3>
+                <div class="flex flex-wrap gap-1.5">
+                    {% for requirement in position.requirements|filter(r => r.level == 'must') %}
+                        <span class="chip chip--primary">{{ requirement.skill }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="grid gap-2">
+                <h3 class="text-[12px] font-extrabold uppercase tracking-[.08em] text-subtle">Nice to have</h3>
+                <div class="flex flex-wrap gap-1.5">
+                    {% for requirement in position.requirements|filter(r => r.level == 'nice') %}
+                        <span class="chip chip--outline">{{ requirement.skill }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card lg:col-span-7" aria-labelledby="apply">
+        <div class="card__header"><h2 class="card__title" id="apply">{{ ui.icon('send') }} Apply for this position</h2></div>
+        <div class="card__body">
+            {{ include('positions/_form.html.twig') }}
+        </div>
+    </section>
+</div>
+{% endblock %}

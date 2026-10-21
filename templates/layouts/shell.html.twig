@@ -1,0 +1,73 @@
+{#
+    Application shell, as in the bvsoft admin.
+    Desktop: side rail + sticky top bar. Phones: top bar + bottom tab bar.
+    Pages fill: title, page_title, content.
+#}
+{% extends 'base.html.twig' %}
+{% import 'ui/_macros.html.twig' as ui %}
+
+{% block body %}
+{% set route = app.request.attributes.get('_route') ?? '' %}
+{% set nav = [
+    {label: 'Open positions', short: 'Positions', icon: 'work', route: 'position_list', active: route starts with 'position_' or route == 'job_application_submit'},
+    {label: 'Applications', short: 'Applications', icon: 'groups', route: 'job_application_list', active: route in ['job_application_list', 'job_application_show']},
+] %}
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="shell">
+    <aside class="rail" aria-label="Main navigation">
+        <a href="{{ path('position_list') }}" class="rail__brand">
+            <span class="brand-mark">{{ include('ui/_brand_mark.svg.twig') }}</span>
+            <span class="rail__brand-name">ATS</span>
+            <span class="rail__brand-app">PoC</span>
+        </a>
+
+        <nav>
+            <p class="rail__section">Candidates</p>
+            <ul class="rail__list">
+                <li><a href="{{ path(nav[0].route) }}" class="rail__link" {% if nav[0].active %}aria-current="page"{% endif %}>{{ ui.icon(nav[0].icon) }}{{ nav[0].label }}</a></li>
+            </ul>
+            <p class="rail__section">Recruiters</p>
+            <ul class="rail__list">
+                <li><a href="{{ path(nav[1].route) }}" class="rail__link" {% if nav[1].active %}aria-current="page"{% endif %}>{{ ui.icon(nav[1].icon) }}{{ nav[1].label }}</a></li>
+            </ul>
+        </nav>
+
+        <p class="rail__footer">AI screening is simulated: no CV leaves this machine.</p>
+    </aside>
+
+    <div class="shell__main">
+        <header class="topbar">
+            <a href="{{ path('position_list') }}" class="topbar__brand" aria-label="Home">
+                <span class="brand-mark">{{ include('ui/_brand_mark.svg.twig') }}</span>
+            </a>
+            <div class="topbar__title">{% block page_title %}{{ block('title') }}{% endblock %}</div>
+        </header>
+
+        <main class="page" id="main" tabindex="-1">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <nav class="tabbar" aria-label="Main navigation">
+        {% for item in nav %}
+            <a href="{{ path(item.route) }}" class="tabbar__link" {% if item.active %}aria-current="page"{% endif %}>
+                <span class="tabbar__icon">{{ ui.icon(item.icon) }}</span>
+                {{ item.short }}
+            </a>
+        {% endfor %}
+    </nav>
+</div>
+
+<div class="toasts" aria-live="polite">
+    {% for type, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="alert alert--{{ type }}" data-autodismiss>
+                {{ ui.icon(type == 'success' ? 'check_circle' : 'info') }}
+                <span class="alert__text">{{ message }}</span>
+            </div>
+        {% endfor %}
+    {% endfor %}
+</div>
+{% endblock %}

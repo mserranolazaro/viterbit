@@ -1,0 +1,61 @@
+{# Small UI building blocks shared by the pages (same names as in the bvsoft admin). #}
+
+{% macro icon(name, class = '') -%}
+    <span class="material-symbols-rounded {{ class }}" aria-hidden="true">{{ name }}</span>
+{%- endmacro %}
+
+{% macro initials(name) -%}
+    {{ name|split(' ')|filter(w => w is not empty)|slice(0, 2)|map(w => w|first|upper)|join }}
+{%- endmacro %}
+
+{% macro status_chip(status) %}
+    {% set meta = {
+        received: {icon: 'schedule', label: 'Received', spin: false},
+        enriching: {icon: 'progress_activity', label: 'Analysing CV', spin: true},
+        enriched: {icon: 'check_circle', label: 'Enriched', spin: false},
+        failed: {icon: 'error', label: 'Failed', spin: false},
+    }[status] ?? {icon: 'info', label: status, spin: false} %}
+    <span class="chip status-chip status-chip--{{ status }}">
+        {{- _self.icon(meta.icon, meta.spin ? 'spin' : '') }} {{ meta.label -}}
+    </span>
+{% endmacro %}
+
+{% macro score_band(score) -%}
+    {{- score is null ? 'none' : (score >= 70 ? 'high' : (score >= 40 ? 'mid' : 'low')) -}}
+{%- endmacro %}
+
+{% macro score(score) %}
+    <span class="score score--{{ _self.score_band(score) }}" title="AI relevance score">
+        {%- if score is null -%}
+            <span class="score__value">–</span>
+        {%- else -%}
+            <span class="score__value">{{ score }}</span><span class="score__unit">/100</span>
+        {%- endif -%}
+    </span>
+{% endmacro %}
+
+{% macro score_ring(score) %}
+    <div class="ring ring--{{ _self.score_band(score) }}" style="--value: {{ score }}" role="img" aria-label="Score {{ score }} out of 100">
+        <span class="ring__label">
+            <span class="ring__value">{{ score }}</span>
+            <span class="ring__unit">of 100</span>
+        </span>
+    </div>
+{% endmacro %}
+
+{% macro empty_state(icon, title, text, action = null) %}
+    <div class="empty-state">
+        <div class="empty-state__art">{{ _self.icon(icon) }}</div>
+        <p class="empty-state__label">{{ title }}</p>
+        <p class="empty-state__sub">{{ text }}</p>
+        {% if action %}{{ action|raw }}{% endif %}
+    </div>
+{% endmacro %}
+
+{% macro date(value) -%}
+    {%- if value -%}
+        <time datetime="{{ value|date('c', 'UTC') }}">{{ value|date('j M Y, H:i') }}</time>
+    {%- else -%}
+        –
+    {%- endif -%}
+{%- endmacro %}
