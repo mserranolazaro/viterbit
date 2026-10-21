@@ -24,10 +24,17 @@ services:
   php:
     <<: *php
 
-  # Messenger worker: consumes domain events (projections, enrichment trigger) and enrichment commands.
-  worker:
+  # One worker per queue: a slow AI call never delays the projections, and each scales on its own.
+  # Both can run several replicas: projections are guarded by the aggregate version (ADR-007).
+  worker-events:
     <<: *php
-    command: php bin/console messenger:consume events enrichment --time-limit=3600 --memory-limit=128M -vv
+    command: php bin/console messenger:consume events --time-limit=3600 --memory-limit=128M -vv
+    restart: unless-stopped
+    profiles: [worker]
+
+  worker-enrichment:
+    <<: *php
+    command: php bin/console messenger:consume enrichment --time-limit=3600 --memory-limit=128M -vv
     restart: unless-stopped
     profiles: [worker]
 

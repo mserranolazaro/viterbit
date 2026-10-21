@@ -18,7 +18,7 @@ init: ## Build, start everything, install dependencies and load sample positions
 	$(DC) up -d php caddy mongo rabbitmq
 	$(PHP) composer install --no-interaction --no-progress
 	$(MAKE) setup
-	$(DC) --profile worker up -d worker
+	$(DC) --profile worker up -d worker-events worker-enrichment
 	-@$(MAKE) --no-print-directory security
 	@echo "\n  Ready: http://localhost:8080  ·  RabbitMQ: http://localhost:15673 (guest/guest)\n"
 
@@ -30,20 +30,20 @@ setup: ## Create MongoDB indexes, load the sample positions and build the CSS
 assets: ## Build the CSS (Tailwind standalone binary, no Node.js)
 	$(PHP) bin/console tailwind:build
 
-demo: ## Submit sample applications (enriched asynchronously by the worker)
+demo: ## Submit sample applications (enriched asynchronously by the workers)
 	$(PHP) bin/console app:demo:applications
 
 css: ## Rebuild the CSS on every template change
 	$(DC) exec php bin/console tailwind:build --watch
 
-up: ## Start containers (including the worker)
+up: ## Start containers (including the workers)
 	$(DC) --profile worker up -d
 
 down: ## Stop containers
 	$(DC) --profile worker down
 
-logs: ## Follow the worker logs
-	$(DC) logs -f worker
+logs: ## Follow the workers' logs
+	$(DC) logs -f worker-events worker-enrichment
 
 sh: ## Shell inside the PHP container
 	$(DC) exec php bash
