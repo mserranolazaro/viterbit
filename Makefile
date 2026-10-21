@@ -14,8 +14,9 @@ init: ## Build, start everything, install dependencies and load sample positions
 	$(DC) --profile worker up -d worker
 	@echo "\n  Ready: http://localhost:8080  ·  RabbitMQ: http://localhost:15673 (guest/guest)\n"
 
-setup: ## Prepare runtime resources (filled in phase by phase)
-	@true
+setup: ## Create MongoDB indexes and load the sample positions
+	$(PHP) bin/console app:mongo:setup
+	$(PHP) bin/console app:positions:seed
 
 up: ## Start containers (including the worker)
 	$(DC) --profile worker up -d
