@@ -8,7 +8,6 @@ use App\Recruitment\Application\Command\JobApplication\EnrichJobApplication\Enri
 use App\Recruitment\Application\Command\JobApplication\SubmitJobApplication\SubmitJobApplicationCommand;
 use App\Recruitment\Domain\Read\JobApplicationViewRepository;
 use App\Recruitment\Domain\Write\Event\JobApplication\JobApplicationWasSubmitted;
-use App\Recruitment\Domain\Write\Repository\PositionRepository;
 use App\Recruitment\Infrastructure\Ai\SimulatedLlmClient;
 use App\Recruitment\Infrastructure\Console\SeedPositionsCommand;
 use App\Tests\IntegrationTestCase;
@@ -23,9 +22,7 @@ final class EnrichmentFlowTest extends IntegrationTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        foreach (SeedPositionsCommand::positions() as $position) {
-            self::service(PositionRepository::class)->save($position);
-        }
+        self::seedPositions();
     }
 
     public function testSubmittingQueuesTheEventAndTheWorkerEnrichesTheApplication(): void
