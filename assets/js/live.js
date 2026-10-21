@@ -28,6 +28,10 @@ class LiveRegion {
         this.lastSummary = this.summary();
 
         element.addEventListener('click', (event) => {
+            if (event.target.closest('[data-live-retry]')) {
+                this.load();
+                return;
+            }
             const link = event.target.closest('a[data-live-link]');
             if (link && !event.metaKey && !event.ctrlKey) {
                 event.preventDefault();
@@ -49,13 +53,14 @@ class LiveRegion {
         clearTimeout(this.timer);
         // A newer request (another keystroke) cancels the one in flight, so results never arrive out of order.
         this.controller?.abort();
-        this.controller = new AbortController();
+        const controller = new AbortController();
+        this.controller = controller;
         this.element.setAttribute('aria-busy', 'true');
 
         try {
             const response = await fetch(url, {
                 headers: { 'X-Requested-With': 'fetch' },
-                signal: this.controller.signal,
+                signal: controller.signal,
             });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
@@ -68,11 +73,30 @@ class LiveRegion {
                 return;
             }
             console.warn('Could not refresh the page section:', error);
+            this.showError();
         } finally {
-            this.element.removeAttribute('aria-busy');
+            // Only the latest request owns the busy state; an aborted one must not clear it.
+            if (this.controller === controller) {
+                this.element.removeAttribute('aria-busy');
+            }
         }
 
         this.schedulePoll();
+    }
+
+    /**
+     * What is on screen may no longer match the filters (or the latest status): say so,
+     * instead of silently showing stale results.
+     */
+    showError() {
+        this.element.querySelector('[data-live-error]')?.remove();
+        this.element.insertAdjacentHTML(
+            'afterbegin',
+            '<div class="alert alert--error m-5" role="alert" data-live-error>'
+                + '<p class="alert__text">Could not update this section, so it may be out of date. '
+                + 'Check your connection.</p>'
+                + '<button type="button" class="btn btn--sm" data-live-retry>Try again</button></div>',
+        );
     }
 
     /** A fragment may carry the page title (the detail page learns the candidate's name once filed). */
