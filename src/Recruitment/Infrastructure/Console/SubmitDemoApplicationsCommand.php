@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Recruitment\Infrastructure\Console;
 
 use App\Recruitment\Application\Command\JobApplication\SubmitJobApplication\SubmitJobApplicationCommand;
+use App\Recruitment\Domain\Write\Exception\JobApplication\JobApplicationAlreadyExistsException;
 use App\Recruitment\Infrastructure\Ai\SimulatedLlmClient;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
@@ -56,13 +58,28 @@ final class SubmitDemoApplicationsCommand
 
     public function __invoke(SymfonyStyle $io): int
     {
+        $submitted = 0;
         foreach (self::CANDIDATES as [$positionId, $name, $email, $cv]) {
-            $this->commandBus->dispatch(
-                new SubmitJobApplicationCommand($positionId, $name, $email, null, null, $cv, privacyConsentGiven: true),
-            );
+            try {
+                $this->commandBus->dispatch(new SubmitJobApplicationCommand(
+                    $positionId,
+                    $name,
+                    $email,
+                    null,
+                    null,
+                    $cv,
+                    privacyConsentGiven: true,
+                ));
+                ++$submitted;
+            } catch (HandlerFailedException $e) {
+                // Running the demo twice: those candidates have already applied.
+                if (!$e->getPrevious() instanceof JobApplicationAlreadyExistsException) {
+                    throw $e;
+                }
+            }
         }
 
-        $io->success(sprintf('%d applications submitted; the workers enrich them now.', count(self::CANDIDATES)));
+        $io->success(sprintf('%d applications submitted; the workers enrich them now.', $submitted));
 
         return Command::SUCCESS;
     }

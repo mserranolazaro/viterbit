@@ -343,6 +343,7 @@
     .btn:active { transform: scale(.98); }
     .btn .material-symbols-rounded { font-size: 20px; margin-left: -4px; }
     .btn[disabled] { opacity: .5; pointer-events: none; }
+    .btn.is-busy { opacity: .7; cursor: progress; }
     .btn--primary { --btn-bg: var(--bv-primary); --btn-fg: var(--bv-on-primary); --btn-border: transparent; box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--bv-primary) 70%, transparent); }
     .btn--primary:hover { filter: brightness(1.06); }
     .btn--tonal { --btn-bg: var(--bv-primary-soft); --btn-fg: var(--bv-on-primary-soft); --btn-border: transparent; }

@@ -3,7 +3,7 @@
 {% set errors = errors ?? {} %}
 {% set values = values ?? {} %}
 
-<form method="post" action="{{ path('job_application_submit', {id: position.id}) }}" class="grid gap-4" novalidate>
+<form method="post" action="{{ path('job_application_submit', {id: position.id}) }}" class="grid gap-4" novalidate data-submit-once>
     <input type="hidden" name="_token" value="{{ csrf_token('submit_application') }}">
 
     {% if errors is not empty %}

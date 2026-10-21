@@ -8,6 +8,9 @@ use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\CvAnalysis;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationId;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationStatus;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Score;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Email;
+use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
+use App\Recruitment\Domain\Write\Exception\JobApplication\JobApplicationAlreadyExistsException;
 use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
 use App\Recruitment\Infrastructure\Persistence\Mongo\MongoJobApplicationRepository;
 use App\Tests\IntegrationTestCase;
@@ -72,6 +75,32 @@ final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
             ->updateOne(['_id' => $jobApplication->id()->value()], ['$unset' => ['version' => '']]);
 
         self::assertSame(1, $repository->findById($jobApplication->id())?->version());
+    }
+
+    public function testItKnowsWhetherACandidateAlreadyAppliedToAPosition(): void
+    {
+        $repository = self::service(JobApplicationRepository::class);
+        $jobApplication = JobApplicationMother::received();
+        $repository->save($jobApplication);
+
+        $position = $jobApplication->positionId();
+        $ada = Email::fromString('ada@example.com');
+
+        self::assertTrue($repository->existsForCandidate($position, $ada));
+        self::assertFalse($repository->existsForCandidate($position, Email::fromString('grace@example.com')));
+        self::assertFalse($repository->existsForCandidate(PositionId::generate(), $ada));
+    }
+
+    public function testTheUniqueIndexStopsADuplicateThatRacedPastTheCheck(): void
+    {
+        self::service(MongoJobApplicationRepository::class)->createIndexes();
+        $repository = self::service(JobApplicationRepository::class);
+        $first = JobApplicationMother::received();
+        $repository->save($first);
+
+        $this->expectException(JobApplicationAlreadyExistsException::class);
+
+        $repository->save(JobApplicationMother::received($first->positionId()));
     }
 
     public function testItReturnsNullForAnUnknownId(): void

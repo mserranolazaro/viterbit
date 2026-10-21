@@ -9,6 +9,7 @@ use App\Recruitment\Domain\Read\JobApplicationView;
 use App\Recruitment\Domain\Read\JobApplicationViewPage;
 use App\Recruitment\Domain\Read\JobApplicationViewRepository;
 use App\SharedKernel\Infrastructure\Mongo\MongoDates;
+use App\SharedKernel\Infrastructure\Mongo\MongoErrors;
 use MongoDB\BSON\Regex;
 use MongoDB\Driver\Exception\BulkWriteException;
 use MongoDB\Collection;
@@ -20,7 +21,6 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
 
     /** Newest first; the id (UUID v7, time-ordered) breaks ties within the same millisecond. */
     private const array NEWEST_FIRST = ['appliedAt' => -1, '_id' => -1];
-    private const int DUPLICATE_KEY = 11000;
 
     private Collection $collection;
 
@@ -52,7 +52,7 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
                 ['upsert' => true],
             );
         } catch (BulkWriteException $e) {
-            if (!self::isDuplicateKey($e)) {
+            if (!MongoErrors::isDuplicateKey($e)) {
                 throw $e;
             }
         }
@@ -104,17 +104,6 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
             $criteria->page,
             $criteria->perPage,
         );
-    }
-
-    private static function isDuplicateKey(BulkWriteException $e): bool
-    {
-        foreach ($e->getWriteResult()->getWriteErrors() as $error) {
-            if ($error->getCode() === self::DUPLICATE_KEY) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

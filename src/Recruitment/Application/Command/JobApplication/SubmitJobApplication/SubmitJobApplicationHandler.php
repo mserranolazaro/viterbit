@@ -10,6 +10,7 @@ use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\CvText;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Email;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationId;
 use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
+use App\Recruitment\Domain\Write\Exception\JobApplication\JobApplicationAlreadyExistsException;
 use App\Recruitment\Domain\Write\Exception\Position\PositionNotFoundException;
 use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
 use App\Recruitment\Domain\Write\Repository\PositionRepository;
@@ -38,11 +39,16 @@ final class SubmitJobApplicationHandler
             throw PositionNotFoundException::withId($positionId);
         }
 
+        $email = Email::fromString($command->email);
+        if ($this->jobApplicationRepository->existsForCandidate($positionId, $email)) {
+            throw JobApplicationAlreadyExistsException::forCandidate($email, $positionId);
+        }
+
         $jobApplicationId = JobApplicationId::generate();
         $jobApplication = JobApplication::submit(
             $jobApplicationId,
             $positionId,
-            Candidate::create($command->fullName, Email::fromString($command->email), $command->phone),
+            Candidate::create($command->fullName, $email, $command->phone),
             $command->notes,
             CvText::fromString($command->cvText),
             $command->privacyConsentGiven,

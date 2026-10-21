@@ -8,6 +8,7 @@ use App\Recruitment\Application\Command\JobApplication\SubmitJobApplication\Subm
 use App\Recruitment\Application\Query\Position\GetPosition\GetPositionQuery;
 use App\Recruitment\Application\Query\Position\GetPosition\PositionDetailResponse;
 use App\Recruitment\Domain\Write\Exception\JobApplication\InvalidJobApplicationDataException;
+use App\Recruitment\Domain\Write\Exception\JobApplication\JobApplicationAlreadyExistsException;
 use App\Recruitment\Infrastructure\Http\Request\SubmitJobApplicationRequest;
 use App\SharedKernel\Infrastructure\Http\UiController;
 use Symfony\Component\HttpFoundation\Request;
@@ -75,6 +76,10 @@ final class SubmitJobApplicationController extends UiController
             ));
         } catch (InvalidJobApplicationDataException $e) {
             return $this->formWithErrors($position, $form, ['form' => $e->getMessage()]);
+        } catch (JobApplicationAlreadyExistsException) {
+            return $this->formWithErrors($position, $form, [
+                'email' => 'An application with this email has already been sent for this position.',
+            ]);
         }
 
         $request->getSession()->set(self::JUST_SUBMITTED, $jobApplicationId);

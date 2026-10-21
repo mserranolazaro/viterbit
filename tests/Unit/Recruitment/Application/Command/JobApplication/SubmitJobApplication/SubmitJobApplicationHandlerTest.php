@@ -11,6 +11,7 @@ use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationSt
 use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
 use App\Recruitment\Domain\Write\Event\JobApplication\JobApplicationWasSubmitted;
 use App\Recruitment\Domain\Write\Exception\JobApplication\InvalidJobApplicationDataException;
+use App\Recruitment\Domain\Write\Exception\JobApplication\JobApplicationAlreadyExistsException;
 use App\Recruitment\Domain\Write\Exception\Position\PositionNotFoundException;
 use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
 use App\Recruitment\Domain\Write\Repository\PositionRepository;
@@ -70,6 +71,25 @@ final class SubmitJobApplicationHandlerTest extends TestCase
             $this->positionId->value(),
             'Ada Lovelace',
             'ada@example.com',
+            null,
+            null,
+            'CV',
+            true,
+        ));
+    }
+
+    public function testItRefusesASecondApplicationFromTheSameCandidateToTheSamePosition(): void
+    {
+        $repository = $this->createMock(JobApplicationRepository::class);
+        $repository->method('existsForCandidate')->willReturn(true);
+        $repository->expects(self::never())->method('save');
+
+        $this->expectException(JobApplicationAlreadyExistsException::class);
+
+        $this->handler($repository)(new SubmitJobApplicationCommand(
+            $this->positionId->value(),
+            'Ada Lovelace',
+            'ADA@example.com',
             null,
             null,
             'CV',

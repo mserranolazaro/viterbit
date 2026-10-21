@@ -112,6 +112,21 @@ final class ApplyToAPositionTest extends FunctionalTestCase
         self::assertSelectorTextContains('[role="alert"] details', 'Enrichment failed after 3 attempt(s)');
     }
 
+    public function testApplyingTwiceToTheSamePositionIsRefusedKindly(): void
+    {
+        $this->apply(self::VALID);
+        self::assertResponseStatusCodeSame(303);
+
+        $crawler = $this->apply(['email' => '  ADA@Example.com '] + self::VALID);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame(
+            'An application with this email has already been sent for this position.',
+            $crawler->filter('#email-error')->text(),
+        );
+        self::assertCount(1, self::transport('events')->getSent());
+    }
+
     public function testAnInvisibleNameIsTreatedAsMissing(): void
     {
         $crawler = $this->apply(['fullName' => "\u{200B}\u{200B}"] + self::VALID);
@@ -165,11 +180,11 @@ final class ApplyToAPositionTest extends FunctionalTestCase
     public function testItLimitsHowManyApplicationsOneClientCanSend(): void
     {
         for ($i = 1; $i <= 5; ++$i) {
-            $this->apply(self::VALID);
+            $this->apply(['email' => sprintf('candidate%d@example.com', $i)] + self::VALID);
             self::assertResponseStatusCodeSame(303, sprintf('Application %d should be accepted.', $i));
         }
 
-        $this->apply(self::VALID);
+        $this->apply(['email' => 'candidate6@example.com'] + self::VALID);
 
         self::assertResponseStatusCodeSame(429);
         self::assertSelectorTextContains('[role="alert"]', 'Too many applications from your network');

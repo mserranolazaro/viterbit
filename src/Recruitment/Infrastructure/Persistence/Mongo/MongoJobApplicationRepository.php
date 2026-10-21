@@ -13,10 +13,13 @@ use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationId
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationStatus;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Score;
 use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
+use App\Recruitment\Domain\Write\Exception\JobApplication\JobApplicationAlreadyExistsException;
 use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
+use App\SharedKernel\Infrastructure\Mongo\MongoErrors;
 use App\SharedKernel\Infrastructure\Mongo\MongoDates;
 use MongoDB\BSON\UTCDateTime;
 use MongoDB\Collection;
+use MongoDB\Driver\Exception\BulkWriteException;
 use MongoDB\Database;
 
 /**
@@ -26,6 +29,7 @@ use MongoDB\Database;
 final class MongoJobApplicationRepository implements JobApplicationRepository
 {
     public const string COLLECTION = 'job_applications';
+    private const string ONE_APPLICATION_PER_CANDIDATE = 'one_application_per_candidate';
 
     private Collection $collection;
 
@@ -34,13 +38,43 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
         $this->collection = $database->selectCollection(self::COLLECTION);
     }
 
+    /**
+     * The unique index backs up the duplicate check in the use case when two submissions race.
+     */
+    public function createIndexes(): void
+    {
+        $this->collection->createIndex(
+            ['positionId' => 1, 'candidate.email' => 1],
+            ['unique' => true, 'name' => self::ONE_APPLICATION_PER_CANDIDATE],
+        );
+    }
+
     public function save(JobApplication $jobApplication): void
     {
-        $this->collection->replaceOne(
-            ['_id' => $jobApplication->id()->value()],
-            $this->toDocument($jobApplication),
-            ['upsert' => true],
-        );
+        try {
+            $this->collection->replaceOne(
+                ['_id' => $jobApplication->id()->value()],
+                $this->toDocument($jobApplication),
+                ['upsert' => true],
+            );
+        } catch (BulkWriteException $e) {
+            if (!MongoErrors::isDuplicateKey($e)) {
+                throw $e;
+            }
+
+            throw JobApplicationAlreadyExistsException::forCandidate(
+                $jobApplication->candidate()->email(),
+                $jobApplication->positionId(),
+            );
+        }
+    }
+
+    public function existsForCandidate(PositionId $positionId, Email $email): bool
+    {
+        return $this->collection->countDocuments(
+            ['positionId' => $positionId->value(), 'candidate.email' => $email->value()],
+            ['limit' => 1],
+        ) > 0;
     }
 
     public function findById(JobApplicationId $id): ?JobApplication

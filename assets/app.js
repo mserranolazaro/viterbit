@@ -5,8 +5,9 @@
  */
 import { initLiveRegions } from './js/live.js';
 import { initToasts } from './js/toasts.js';
-import { focusFirstInvalidField } from './js/forms.js';
+import { focusFirstInvalidField, preventDoubleSubmit } from './js/forms.js';
 
 initLiveRegions(document);
 initToasts(document);
 focusFirstInvalidField(document);
+preventDoubleSubmit(document);
