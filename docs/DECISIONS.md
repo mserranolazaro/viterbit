@@ -80,9 +80,12 @@ Fixed in **8.2.35, 8.3.36, 8.4.27 and 8.5.12**. Upgrading is the only complete f
    capped: `file_uploads=Off`, `max_file_uploads=0`, `post_max_size=1M`,
    `session.upload_progress.enabled=0` and `expose_php=Off`. This shrinks the multipart and
    upload-progress surface both CVEs go through. It is a mitigation, not a fix.
-2. *As soon as the image is published:* pin `FROM php:8.4.27-fpm` (an exact patch version instead
-   of the floating `8.4` tag, so a cached image cannot silently keep the vulnerable build), and
-   make CI fail when the PHP inside the image is older than that.
+2. *A guard until then:* `make security` fails when the PHP inside the image is older than
+   8.4.27. CI runs it as a blocking step, and `make init` runs it as a warning. `make init` also
+   builds with `--pull`, so it picks up the patched base image as soon as Docker Hub publishes it.
+3. *Once the image is published:* pin `PHP_VERSION=8.4.27` in `docker/php/Dockerfile`. An exact
+   patch version instead of the floating `8.4` tag means a cached image cannot silently keep the
+   vulnerable build.
 
 **Why it matters here.** The app is a public form that accepts free text: exactly the
 unauthenticated, request-parsing surface these bugs target. Turning off unused features is

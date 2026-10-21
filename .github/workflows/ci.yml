@@ -17,8 +17,11 @@ jobs:
 
       - name: Build and start the stack
         run: |
-          docker compose build
+          docker compose build --pull
           docker compose up -d php mongo rabbitmq
+
+      - name: PHP security baseline (ADR-004)
+        run: make security
 
       - name: Install dependencies
         run: docker compose exec -T php composer install --no-interaction --no-progress

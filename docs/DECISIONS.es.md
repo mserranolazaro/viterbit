@@ -82,9 +82,12 @@ oficial `php:8.4.27-fpm` todavía no está en Docker Hub. La imagen se sigue con
    `max_file_uploads=0`, `post_max_size=1M`, `session.upload_progress.enabled=0` y
    `expose_php=Off`. Así se reduce la superficie multipart y de progreso de subida por la que
    pasan los dos CVE. Es una mitigación, no la solución.
-2. *En cuanto salga la imagen:* fijar `FROM php:8.4.27-fpm` (una versión de parche exacta en
-   lugar de la etiqueta flotante `8.4`, para que una imagen cacheada no siga en silencio con la
-   versión vulnerable) y hacer que CI falle si el PHP de la imagen es anterior.
+2. *Una salvaguarda mientras tanto:* `make security` falla si el PHP de la imagen es anterior a
+   la 8.4.27. CI lo ejecuta como paso bloqueante y `make init` como aviso. Además, `make init`
+   construye con `--pull`, así que recoge la imagen base parcheada en cuanto Docker Hub la publique.
+3. *Cuando se publique la imagen:* fijar `PHP_VERSION=8.4.27` en `docker/php/Dockerfile`. Una
+   versión de parche exacta en lugar de la etiqueta flotante `8.4` evita que una imagen cacheada
+   siga en silencio con la versión vulnerable.
 
 **Por qué importa aquí.** La aplicación es un formulario público que acepta texto libre:
 justo la superficie sin autenticación y de parseo de peticiones a la que apuntan estos fallos.

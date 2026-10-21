@@ -1,4 +1,7 @@
-FROM php:8.4-fpm
+# Pin the exact patch version once php:8.4.27-fpm is on Docker Hub (CVE-2026-109618/109619,
+# see docs/DECISIONS.md, ADR-004). Until then, "make init" pulls the latest 8.4 build.
+ARG PHP_VERSION=8.4
+FROM php:${PHP_VERSION}-fpm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
