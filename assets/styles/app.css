@@ -214,10 +214,7 @@
         flex-shrink: 0;
         overflow: hidden;
     }
-    .material-symbols-rounded.filled { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
 
-    .num { font-variant-numeric: tabular-nums; }
-    .muted { color: var(--bv-text-muted); }
 
     .visually-hidden {
         position: absolute !important; width: 1px; height: 1px; overflow: hidden;
@@ -354,16 +351,6 @@
     .btn--sm { min-height: 34px; padding: 0 12px; font-size: 13.5px; }
     .btn--lg { min-height: 50px; padding: 0 24px; font-size: 15.5px; }
 
-    .icon-btn {
-        display: inline-grid; place-items: center;
-        width: 40px; height: 40px; flex-shrink: 0;
-        border-radius: var(--bv-radius-full);
-        border: 0; background: transparent; color: var(--bv-text-muted);
-        text-decoration: none; cursor: pointer;
-        transition: background-color .15s, color .15s;
-    }
-    .icon-btn:hover { background: var(--bv-surface-2); color: var(--bv-text); }
-
     /* Finance avatars: ochre into navy. */
     .avatar {
         display: inline-grid; place-items: center;
@@ -408,9 +395,6 @@
     }
     .chip .material-symbols-rounded { font-size: 15px; margin-left: -2px; }
     .chip--positive { background: var(--bv-success-soft); color: var(--bv-on-success-soft); }
-    .chip--negative { background: var(--bv-danger-soft); color: var(--bv-on-danger-soft); }
-    .chip--accent   { background: var(--bv-accent-soft); color: var(--bv-on-accent-soft); }
-    .chip--info     { background: var(--bv-info-soft); color: var(--bv-on-info-soft); }
     .chip--primary  { background: var(--bv-primary-soft); color: var(--bv-on-primary-soft); }
     .chip--outline  { background: transparent; box-shadow: inset 0 0 0 1px var(--bv-border-strong); }
 
