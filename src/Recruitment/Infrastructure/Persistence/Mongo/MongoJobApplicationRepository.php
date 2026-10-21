@@ -1,0 +1,120 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Recruitment\Infrastructure\Persistence\Mongo;
+
+use App\Recruitment\Domain\Write\Aggregate\Root\JobApplication\JobApplication;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Candidate;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\CvText;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Email;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Enrichment;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationId;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationStatus;
+use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Score;
+use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
+use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
+use App\SharedKernel\Infrastructure\Mongo\MongoDates;
+use MongoDB\Collection;
+use MongoDB\Database;
+
+/**
+ * Write model: one document per aggregate, replaced as a whole on every save.
+ * The mapping is explicit so the domain carries no persistence code.
+ */
+final class MongoJobApplicationRepository implements JobApplicationRepository
+{
+    public const string COLLECTION = 'job_applications';
+
+    private Collection $collection;
+
+    public function __construct(Database $database)
+    {
+        $this->collection = $database->selectCollection(self::COLLECTION);
+    }
+
+    public function save(JobApplication $jobApplication): void
+    {
+        $this->collection->replaceOne(
+            ['_id' => $jobApplication->id()->value()],
+            $this->toDocument($jobApplication),
+            ['upsert' => true],
+        );
+    }
+
+    public function findById(JobApplicationId $id): ?JobApplication
+    {
+        /** @var array<string, mixed>|null $document */
+        $document = $this->collection->findOne(['_id' => $id->value()]);
+
+        return $document === null ? null : $this->toJobApplication($document);
+    }
+
+    public function all(): iterable
+    {
+        /** @var array<string, mixed> $document */
+        foreach ($this->collection->find([], ['sort' => ['appliedAt' => 1]]) as $document) {
+            yield $this->toJobApplication($document);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function toDocument(JobApplication $jobApplication): array
+    {
+        $candidate = $jobApplication->candidate();
+        $enrichment = $jobApplication->enrichment();
+
+        return [
+            '_id' => $jobApplication->id()->value(),
+            'positionId' => $jobApplication->positionId()->value(),
+            'candidate' => [
+                'fullName' => $candidate->fullName(),
+                'email' => $candidate->email()->value(),
+                'phone' => $candidate->phone(),
+            ],
+            'notes' => $jobApplication->notes(),
+            'cvText' => $jobApplication->cvText()->value(),
+            'status' => $jobApplication->status()->value,
+            'appliedAt' => MongoDates::toBson($jobApplication->appliedAt()),
+            'updatedAt' => MongoDates::toBson($jobApplication->updatedAt()),
+            'enrichment' => $enrichment === null ? null : [
+                'summary' => $enrichment->summary,
+                'score' => $enrichment->score->value(),
+                'promptVersion' => $enrichment->promptVersion,
+                'enrichedAt' => MongoDates::toBson($enrichment->enrichedAt),
+            ],
+            'failureReason' => $jobApplication->failureReason(),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     */
+    private function toJobApplication(array $document): JobApplication
+    {
+        /** @var array{fullName: string, email: string, phone: ?string} $candidate */
+        $candidate = $document['candidate'];
+        /** @var array{summary: string, score: int, promptVersion: string, enrichedAt: \MongoDB\BSON\UTCDateTime}|null $enrichment */
+        $enrichment = $document['enrichment'];
+
+        return JobApplication::reconstitute(
+            JobApplicationId::fromString($document['_id']),
+            PositionId::fromString($document['positionId']),
+            Candidate::create($candidate['fullName'], Email::fromString($candidate['email']), $candidate['phone']),
+            $document['notes'],
+            CvText::fromString($document['cvText']),
+            JobApplicationStatus::from($document['status']),
+            MongoDates::fromBson($document['appliedAt']),
+            MongoDates::fromBson($document['updatedAt']),
+            $enrichment === null ? null : new Enrichment(
+                $enrichment['summary'],
+                Score::fromInt($enrichment['score']),
+                $enrichment['promptVersion'],
+                MongoDates::fromBson($enrichment['enrichedAt']),
+            ),
+            $document['failureReason'],
+        );
+    }
+}
