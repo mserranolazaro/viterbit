@@ -16,17 +16,19 @@ final class ListJobApplicationsController extends UiController
 {
     public function __invoke(Request $request): Response
     {
+        // Shared or hand-edited URLs must still show a list: anything unreadable is ignored.
         $filters = [
-            'q' => $request->query->getString('q'),
-            'status' => $request->query->getString('status'),
-            'position' => $request->query->getString('position'),
+            'q' => self::text($request, 'q'),
+            'status' => self::text($request, 'status'),
+            'position' => self::text($request, 'position'),
         ];
+        $pageNumber = filter_var(self::text($request, 'page'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
         $page = $this->query(new SearchJobApplicationsQuery(
             status: $filters['status'] ?: null,
             positionId: $filters['position'] ?: null,
             search: $filters['q'] ?: null,
-            page: max(1, $request->query->getInt('page', 1)),
+            page: $pageNumber === false ? 1 : $pageNumber,
         ));
 
         if ($this->isFragmentRequest($request)) {
@@ -38,5 +40,12 @@ final class ListJobApplicationsController extends UiController
             'filters' => $filters,
             'positions' => $this->query(new ListPositionsQuery()),
         ]));
+    }
+
+    private static function text(Request $request, string $name): string
+    {
+        $value = $request->query->all()[$name] ?? '';
+
+        return is_string($value) ? $value : '';
     }
 }

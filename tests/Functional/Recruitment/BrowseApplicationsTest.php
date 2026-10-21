@@ -7,6 +7,7 @@ namespace App\Tests\Functional\Recruitment;
 use App\Recruitment\Application\Command\JobApplication\SubmitJobApplication\SubmitJobApplicationCommand;
 use App\Recruitment\Infrastructure\Console\SeedPositionsCommand;
 use App\Tests\FunctionalTestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Clock\Clock;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\Clock\NativeClock;
@@ -105,6 +106,67 @@ final class BrowseApplicationsTest extends FunctionalTestCase
         // Control: the application form does need a session (CSRF token), and the check sees it.
         $this->client->request('GET', '/positions/' . SeedPositionsCommand::BACKEND_ENGINEER_ID);
         self::assertTrue($this->sessionWasStarted());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unreadableQueries(): iterable
+    {
+        yield 'page is not a number' => ['?page=abc'];
+        yield 'page overflows an integer' => ['?page=99999999999999999999'];
+        yield 'page is negative' => ['?page=-3'];
+        yield 'filters sent as arrays' => ['?q[]=ada&status[]=enriched&position[a]=x&page[]=2'];
+        yield 'operator injection' => ['?q[$ne]=1'];
+    }
+
+    #[DataProvider('unreadableQueries')]
+    public function testAnUnreadableQueryStillShowsTheFirstPage(string $query): void
+    {
+        $this->submitSampleApplications();
+        self::runWorker();
+
+        $this->client->request('GET', '/applications' . $query);
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(3, $this->names((string) $this->client->getResponse()->getContent()));
+    }
+
+    public function testAPagePastTheEndSaysSoAndLinksBackToTheFirstOne(): void
+    {
+        $this->submitSampleApplications();
+        self::runWorker();
+
+        $crawler = $this->client->request('GET', '/applications?status=enriched&page=50');
+
+        self::assertSelectorTextContains('#results', 'Nothing on this page');
+        self::assertSelectorTextContains('#results', 'There are 3 matching applications');
+        self::assertSame('/applications?status=enriched', $crawler->filter('#results a[data-live-link]')->attr('href'));
+    }
+
+    public function testPaginationKeepsTheFilters(): void
+    {
+        $bus = self::service(MessageBusInterface::class);
+        for ($i = 1; $i <= 22; ++$i) {
+            $bus->dispatch(new SubmitJobApplicationCommand(
+                SeedPositionsCommand::DATA_ANALYST_ID,
+                sprintf('Analyst %02d', $i),
+                sprintf('analyst%02d@example.com', $i),
+                null,
+                null,
+                'SQL',
+                true,
+            ));
+        }
+        self::runWorker();
+
+        $crawler = $this->client->request('GET', '/applications?q=analyst&status=enriched');
+        self::assertSelectorTextContains('.pagination', 'Page 1 of 2');
+        $next = (string) $crawler->filter('.pagination a[rel="next"]')->attr('href');
+        self::assertSame('/applications?q=analyst&status=enriched&page=2', $next);
+
+        $this->client->request('GET', $next);
+        self::assertCount(2, $this->names((string) $this->client->getResponse()->getContent()));
     }
 
     public function testAnUnknownApplicationIsNotFound(): void

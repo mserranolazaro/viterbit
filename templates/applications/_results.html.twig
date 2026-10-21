@@ -15,7 +15,9 @@
 </div>
 
 {% if page.items is empty %}
-    {% if query is empty %}
+    {% if page.total > 0 %}
+        {{ ui.empty_state('person_search', 'Nothing on this page', 'There are ' ~ page.total ~ ' matching applications, but this page is past the end.', '<a class="btn btn--tonal" data-live-link href="' ~ path('job_application_list', query) ~ '">Back to the first page</a>') }}
+    {% elseif query is empty %}
         {{ ui.empty_state('inbox', 'No applications yet', 'They will show up here, newest first, as candidates apply.', '<a class="btn btn--tonal" href="' ~ path('position_list') ~ '">See open positions</a>') }}
     {% else %}
         {{ ui.empty_state('person_search', 'No matches', 'Nothing matches these filters. Try another name, status or position.') }}
