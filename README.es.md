@@ -140,7 +140,7 @@ Las que más dan para hablar:
 | El LLM se trata como entrada no confiable (prompt versionado, JSON Schema, reintentos) | Cambiar a un modelo real es una clase; nada más cambia | 013 |
 | Los tests ejecutan un worker real de Messenger sobre transports en memoria | Comprueban el estado entre pasos asíncronos, que es donde están los bugs | 014 |
 | Fragmentos HTML y polling en lugar de una SPA | Un solo renderizador, sin cadena de build, funciona sin JS | 015 |
-| Seguridad y privacidad: límite de peticiones, CSP con nonce, consentimiento explícito, mensajes solo con ids | Un formulario público que recibe CVs: abuso, XSS y RGPD son los riesgos reales | 016 |
+| Seguridad y privacidad: límite de peticiones, Content-Security-Policy (CSP) con nonce, consentimiento explícito, mensajes solo con ids | Un formulario público que recibe CVs: abuso, XSS y RGPD son los riesgos reales | 016 |
 | Runtime parcheado: Symfony 8.1, PHP fijado en 8.4.27, control de CVE en CI | La 8.0 no tiene parches; php2shell (CVE-2026-109618/9) salió durante el ejercicio | 002, 004 |
 | Una caída del broker no pierde nada: el publisher lo registra y un reconciliador programado lo reconduce | Postularse sigue funcionando con RabbitMQ caído; las candidaturas atascadas se recuperan solas | 011 |
 
@@ -204,13 +204,14 @@ infraestructura, UI y documentación.
 - **Seguridad:** durante el ejercicio salió una release crítica de seguridad de PHP (php2shell).
   El asistente investigó los avisos, comprobó que la imagen base seguía siendo vulnerable y añadió
   la mitigación y la salvaguarda que se describen en el ADR-004.
-- **Revisión:** antes de entregar, pedí una revisión de todo el código con ojos de CTO y después
-  arreglé todo lo que encontró, cada punto con un test cuando tenía sentido:
+- **Revisión:** antes de entregar, pedí una revisión de todo el código con ojos de programador
+  senior y después arreglé todo lo que encontró, cada punto con un test cuando tenía sentido:
   - el CI fallaba con un clon limpio;
   - una afirmación documentada sobre la prioridad de los workers no era cierta;
   - las proyecciones podían retroceder con workers en paralelo;
   - faltaban el límite de peticiones y el consentimiento en un formulario público;
-  - no había CSP;
+  - no había cabecera Content-Security-Policy, la segunda línea de defensa del navegador contra
+    el XSS;
   - el polling generaba ruido de accesibilidad;
   - y pulidos menores.
 - **QA:** una pasada de QA intentó romper la app (abuso por HTTP, entradas extremas, el navegador,

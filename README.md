@@ -139,7 +139,7 @@ The ones most worth discussing:
 | An LLM treated as untrusted (versioned prompt, JSON Schema, retries) | Swapping in a real model is one class; nothing else changes | 013 |
 | Tests run a real Messenger worker over in-memory transports | They assert the state between asynchronous steps, where the bugs are | 014 |
 | HTML fragments and polling instead of a SPA | One renderer, no build chain, works without JS | 015 |
-| Security and privacy: rate limit, nonce-based CSP, explicit consent, ids-only messages | A public form taking CVs: abuse, XSS and GDPR are the real risks | 016 |
+| Security and privacy: rate limit, nonce-based Content-Security-Policy (CSP), explicit consent, ids-only messages | A public form taking CVs: abuse, XSS and GDPR are the real risks | 016 |
 | Patched runtime: Symfony 8.1, PHP pinned to 8.4.27, CVE guard in CI | 8.0 is unpatched; php2shell (CVE-2026-109618/9) was published during the exercise | 002, 004 |
 | A broker outage loses nothing: the publisher logs, a scheduled reconciler re-drives | Applying still works with RabbitMQ down; stuck applications recover on their own | 011 |
 
@@ -202,13 +202,13 @@ infrastructure, UI and docs.
 - **Security:** a critical PHP security release (php2shell) came out during the exercise. The
   assistant researched the advisories, found that the base image was still vulnerable, and
   added the mitigation and the guard described in ADR-004.
-- **Review:** before delivering, I asked for a CTO-style review of the whole code base and then
-  fixed everything it found, each item with a test where it applied:
+- **Review:** before delivering, I asked for a senior-developer review of the whole code base and
+  then fixed everything it found, each item with a test where it applied:
   - CI failing on a clean clone;
   - a documented claim about worker priorities that was not true;
   - projections that could go backwards with parallel workers;
   - a missing rate limit and missing consent on a public form;
-  - no CSP;
+  - no Content-Security-Policy header, the browser's second line of defence against XSS;
   - accessibility noise from polling;
   - and smaller polish.
 - **QA:** a QA pass tried to break the app (HTTP abuse, edge inputs, the browser, the broker

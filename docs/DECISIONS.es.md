@@ -158,9 +158,9 @@ El agregado se llama **`JobApplication`**, no `Application`.
 - `reconstitute()` reconstruye un agregado desde el almacenamiento sin registrar eventos;
   `submit()` y las transiciones sí los registran.
 
-**Por qué.** Las reglas por las que preguntará el CTO (qué estados hay y cuál puede seguir a
-cuál) se pueden leer y probar en dos ficheros pequeños, sin arrancar nada. Los tests cubren la
-tabla completa de transiciones.
+**Por qué.** Las reglas por las que preguntará quien lo revise (qué estados hay y cuál puede
+seguir a cuál) se pueden leer y probar en dos ficheros pequeños, sin arrancar nada. Los tests
+cubren la tabla completa de transiciones.
 
 **Alternativas descartadas.**
 - *Atributos de mapeo de Doctrine en las clases del dominio* (como en los servicios MySQL del

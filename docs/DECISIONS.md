@@ -153,7 +153,7 @@ The aggregate is called **`JobApplication`**, not `Application`.
 - `reconstitute()` rebuilds an aggregate from storage without recording events; `submit()`
   and the transitions record them.
 
-**Why.** The rules the CTO will ask about (what states exist, what can follow what) can be
+**Why.** The rules a reviewer will ask about (what states exist, what can follow what) can be
 read and tested in two small files without booting anything. The tests cover the full
 transition table.
 
