@@ -59,23 +59,33 @@ imagen a `mongo:8` o posterior; no hace falta tocar código.
 
 ## ADR-004 · Seguimiento de releases de seguridad de PHP (php2shell, 21-10-2026)
 
-**Contexto.** El 20 de octubre de 2026 el equipo de seguridad de PHP preanunció una release
-para el **21 de octubre de 2026 a las 14:00 UTC**. Corrige dos vulnerabilidades críticas, ambas
-con CVSS v4.0 9.2. Los investigadores las identifican como CVE-2026-109618 y CVE-2026-109619
-(«php2shell», ejecución remota de código en el núcleo de PHP). Los detalles se filtraron antes
-de la release y esa misma mañana ya se informó de los primeros ataques contra sitios PHP.
+**Contexto.** El 20 de octubre de 2026 el equipo de seguridad de PHP preanunció una release para
+el día 21 que corrige dos vulnerabilidades críticas del núcleo. Los detalles se filtraron antes
+(«php2shell») y esa misma mañana ya se informó de los primeros ataques. La release salió el día
+21, antes de las 14:00 UTC anunciadas:
 
-**Estado al escribir esta entrada (21-10-2026, 13:35 UTC).** El parche aún no está publicado.
-La imagen se construye desde `php:8.4-fpm`, que ahora mismo resuelve a **PHP 8.4.26
-(24-09-2026), así que no está parcheada**. En Docker Hub solo existe `8.4.27RC1`.
+| Aviso | CVE | Qué es | CVSS v4 |
+|---|---|---|---|
+| GHSA-w8hw-w9fx-j79w | CVE-2026-109618 | RCE por corrupción en OOM: el `longjmp()` del error de memoria agotada deja memoria de la petición a medio inicializar. Se alcanza sin autenticación mediante el **parseo multipart** (muchos campos de fichero vacíos, cabeceras de parte sin límite). | 9.2 |
+| GHSA-6wmf-4rv5-p3rp | CVE-2026-109619 | RCE por estado global obsoleto: un error fatal en un worker persistente deja estado global apuntando a memoria ya liberada de la petición (use-after-free). Una de las vías es el **progreso de subida de sesión**. | 9.2 |
+
+Corregidas en **8.2.35, 8.3.36, 8.4.27 y 8.5.12**. Actualizar es la única solución completa.
+
+**Estado (21-10-2026, 13:45 UTC).** PHP 8.4.27 está publicado en php.net, pero la imagen
+oficial `php:8.4.27-fpm` todavía no está en Docker Hub. La imagen se sigue construyendo desde
+`php:8.4-fpm`, que resuelve a **8.4.26 (vulnerable)**.
 
 **Decisión.**
-- En cuanto salga la versión corregida, se fija la versión exacta en `docker/php/Dockerfile`
-  (en lugar de la etiqueta flotante `8.4`), para que una imagen cacheada no siga en silencio con
-  la versión vulnerable.
-- CI comprueba la versión de PHP de la imagen contra ese mínimo y falla si es inferior.
+1. *Ya, como defensa en profundidad:* `docker/php/conf.d/security.ini` apaga lo que la
+   aplicación no necesita. El CV se pega como texto y la subida de ficheros está fuera de
+   alcance, así que se desactiva o se limita lo siguiente: `file_uploads=Off`,
+   `max_file_uploads=0`, `post_max_size=1M`, `session.upload_progress.enabled=0` y
+   `expose_php=Off`. Así se reduce la superficie multipart y de progreso de subida por la que
+   pasan los dos CVE. Es una mitigación, no la solución.
+2. *En cuanto salga la imagen:* fijar `FROM php:8.4.27-fpm` (una versión de parche exacta en
+   lugar de la etiqueta flotante `8.4`, para que una imagen cacheada no siga en silencio con la
+   versión vulnerable) y hacer que CI falle si el PHP de la imagen es anterior.
 
-**Por qué importa aquí.** La aplicación es un formulario público que acepta texto libre,
-justo el tipo de superficie que atacan estas vulnerabilidades. Fijar la versión del parche
-deja explícito el nivel de seguridad y permite revisarlo en un diff, en lugar de depender de
-cuándo se descargó la etiqueta por última vez.
+**Por qué importa aquí.** La aplicación es un formulario público que acepta texto libre:
+justo la superficie sin autenticación y de parseo de peticiones a la que apuntan estos fallos.
+Apagar lo que no se usa cuesta poco y sigue siendo útil después de actualizar.

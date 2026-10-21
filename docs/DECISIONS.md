@@ -58,21 +58,32 @@ or later; no code change is needed.
 
 ## ADR-004 · Tracking PHP security releases (php2shell, 21 Oct 2026)
 
-**Context.** On 20 Oct 2026 the PHP security team pre-announced a release for
-**21 Oct 2026 at 14:00 UTC** that fixes two critical vulnerabilities, both rated
-CVSS v4.0 9.2. Security researchers identify them as CVE-2026-109618 and CVE-2026-109619
-("php2shell", remote code execution in PHP core). Details had leaked before the release, and
-early attacks against PHP sites were reported the same morning.
+**Context.** On 20 Oct 2026 the PHP security team pre-announced a release for 21 Oct that fixes
+two critical vulnerabilities in PHP core. Details had leaked beforehand ("php2shell") and early
+attacks were reported the same morning. The release came out on 21 Oct, ahead of the announced
+14:00 UTC:
 
-**Status when this entry was written (21 Oct 2026, 13:35 UTC).** The fix is not published yet.
-The image is built from `php:8.4-fpm`, which currently resolves to **PHP 8.4.26
-(24 Sep 2026), so it is not patched**. Only `8.4.27RC1` exists on Docker Hub.
+| Advisory | CVE | What it is | CVSS v4 |
+|---|---|---|---|
+| GHSA-w8hw-w9fx-j79w | CVE-2026-109618 | RCE via OOM corruption: the out-of-memory `longjmp()` leaves request memory half-initialised. Reachable unauthenticated through **multipart parsing** (many empty file fields, unlimited part headers). | 9.2 |
+| GHSA-6wmf-4rv5-p3rp | CVE-2026-109619 | RCE via stale global state: a fatal error in a persistent worker leaves global state pointing at freed request memory (use-after-free). One path is **session upload progress**. | 9.2 |
+
+Fixed in **8.2.35, 8.3.36, 8.4.27 and 8.5.12**. Upgrading is the only complete fix.
+
+**Status (21 Oct 2026, 13:45 UTC).** PHP 8.4.27 is published on php.net, but the official
+`php:8.4.27-fpm` Docker image is not available yet. The image is still built from
+`php:8.4-fpm`, which resolves to **8.4.26 (vulnerable)**.
 
 **Decision.**
-- As soon as the fixed release is out, pin the exact patched version in `docker/php/Dockerfile`
-  (instead of the floating `8.4` tag) so a cached image cannot silently keep the vulnerable build.
-- CI checks the PHP version inside the image against that minimum and fails below it.
+1. *Now, defence in depth:* `docker/php/conf.d/security.ini` turns off what the app does not need.
+   The CV is pasted as text and file uploads are out of scope, so the following are off or
+   capped: `file_uploads=Off`, `max_file_uploads=0`, `post_max_size=1M`,
+   `session.upload_progress.enabled=0` and `expose_php=Off`. This shrinks the multipart and
+   upload-progress surface both CVEs go through. It is a mitigation, not a fix.
+2. *As soon as the image is published:* pin `FROM php:8.4.27-fpm` (an exact patch version instead
+   of the floating `8.4` tag, so a cached image cannot silently keep the vulnerable build), and
+   make CI fail when the PHP inside the image is older than that.
 
-**Why it matters here.** The app is a public form that accepts free text, which is the kind of
-surface such vulnerabilities target. Pinning patch versions makes the security baseline
-explicit and reviewable in a diff, instead of depending on when a tag was last pulled.
+**Why it matters here.** The app is a public form that accepts free text: exactly the
+unauthenticated, request-parsing surface these bugs target. Turning off unused features is
+cheap and stays useful after the upgrade.
