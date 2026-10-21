@@ -17,6 +17,8 @@ RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.
     && echo "opcache.validate_timestamps=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.ini \
     && echo "pcov.enabled=0" >> /usr/local/etc/php/conf.d/docker-php-ext-pcov.ini
 
+COPY conf.d/security.ini /usr/local/etc/php/conf.d/zz-security.ini
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 RUN useradd -m -u 1000 app
