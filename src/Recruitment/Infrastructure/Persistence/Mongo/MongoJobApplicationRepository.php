@@ -116,7 +116,8 @@ final class MongoJobApplicationRepository implements JobApplicationRepository
                 MongoDates::fromBson($enrichment['enrichedAt']),
             ),
             $document['failureReason'],
-            $document['version'],
+            // Documents written before versioning existed are read as their first version.
+            $document['version'] ?? 1,
         );
     }
 }

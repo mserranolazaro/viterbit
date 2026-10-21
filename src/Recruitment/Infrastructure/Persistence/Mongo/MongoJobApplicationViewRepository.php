@@ -166,7 +166,8 @@ final class MongoJobApplicationViewRepository implements JobApplicationViewRepos
             appliedAt: MongoDates::fromBson($document['appliedAt']),
             updatedAt: MongoDates::fromBson($document['updatedAt']),
             enrichedAt: MongoDates::fromNullableBson($document['enrichedAt']),
-            version: $document['version'],
+            // Views written before versioning existed; app:views:rebuild refreshes them.
+            version: $document['version'] ?? 0,
         );
     }
 }

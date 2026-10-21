@@ -9,8 +9,10 @@ use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationId
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\JobApplicationStatus;
 use App\Recruitment\Domain\Write\Aggregate\Value\JobApplication\Score;
 use App\Recruitment\Domain\Write\Repository\JobApplicationRepository;
+use App\Recruitment\Infrastructure\Persistence\Mongo\MongoJobApplicationRepository;
 use App\Tests\IntegrationTestCase;
 use App\Tests\Support\JobApplicationMother;
+use MongoDB\Database;
 
 final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
 {
@@ -57,6 +59,17 @@ final class MongoJobApplicationRepositoryTest extends IntegrationTestCase
         self::assertSame('cv_analysis.v1', $found->enrichment()->promptVersion);
         self::assertSame('2026-10-21 10:00:07.123', $found->enrichment()->enrichedAt->format('Y-m-d H:i:s.v'));
         self::assertCount(1, iterator_to_array($repository->all()));
+    }
+
+    public function testItReadsDocumentsWrittenBeforeVersioningAsTheFirstVersion(): void
+    {
+        $repository = self::service(JobApplicationRepository::class);
+        $jobApplication = JobApplicationMother::received();
+        $repository->save($jobApplication);
+        self::service(Database::class)->selectCollection(MongoJobApplicationRepository::COLLECTION)
+            ->updateOne(['_id' => $jobApplication->id()->value()], ['$unset' => ['version' => '']]);
+
+        self::assertSame(1, $repository->findById($jobApplication->id())?->version());
     }
 
     public function testItReturnsNullForAnUnknownId(): void
