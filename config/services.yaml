@@ -23,5 +23,25 @@ services:
             # The domain holds entities, value objects, events and ports: nothing to wire.
             - '../src/*/Domain/'
 
+    # Ports → adapters. The domain is excluded above, so each port is bound here, in one place.
+    App\SharedKernel\Domain\Event\DomainEventPublisher: '@App\SharedKernel\Infrastructure\Messaging\MessengerDomainEventPublisher'
+    App\Recruitment\Domain\Write\Repository\PositionRepository: '@App\Recruitment\Infrastructure\Persistence\Mongo\MongoPositionRepository'
+    App\Recruitment\Domain\Write\Repository\JobApplicationRepository: '@App\Recruitment\Infrastructure\Persistence\Mongo\MongoJobApplicationRepository'
+    App\Recruitment\Domain\Read\JobApplicationViewRepository: '@App\Recruitment\Infrastructure\Persistence\Mongo\MongoJobApplicationViewRepository'
+    App\Recruitment\Domain\Write\Service\CvAnalyzer: '@App\Recruitment\Infrastructure\Ai\PromptBasedCvAnalyzer'
+    # Swap for a real provider's client to use an actual LLM; nothing else changes.
+    App\Recruitment\Infrastructure\Ai\LlmClient: '@App\Recruitment\Infrastructure\Ai\SimulatedLlmClient'
+
+    MongoDB\Client:
+        arguments:
+            - '%env(MONGODB_URL)%'
+            - []
+            # Documents come back as plain PHP arrays, which the repositories map explicitly.
+            - { typeMap: { root: array, document: array, array: array } }
+
+    MongoDB\Database:
+        factory: ['@MongoDB\Client', 'getDatabase']
+        arguments: ['%env(MONGODB_DB)%']
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
