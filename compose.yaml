@@ -1,0 +1,64 @@
+name: viterbit-ats
+
+x-php: &php
+  build: docker/php
+  image: viterbit-ats-php:local
+  volumes:
+    - .:/var/www/app
+  environment:
+    # Lets git run inside the container on a bind-mounted repo (pre-commit hook, composer).
+    GIT_CONFIG_COUNT: 1
+    GIT_CONFIG_KEY_0: safe.directory
+    GIT_CONFIG_VALUE_0: '*'
+  depends_on:
+    mongo:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+
+services:
+  php:
+    <<: *php
+
+  # Messenger worker: consumes domain events (projections, enrichment trigger) and enrichment commands.
+  worker:
+    <<: *php
+    command: php bin/console messenger:consume events enrichment --time-limit=3600 --memory-limit=128M -vv
+    restart: unless-stopped
+    profiles: [worker]
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - '8080:80'
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./public:/var/www/app/public:ro
+    depends_on:
+      - php
+
+  mongo:
+    # 8.x/9.0 refuse to start on Linux kernels 6.19–7.0.13 (current Docker Desktop); see docs/DECISIONS.md.
+    image: mongo:7.0
+    ports:
+      - '27018:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.adminCommand("ping").ok']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - '15673:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+volumes:
+  mongo-data:
