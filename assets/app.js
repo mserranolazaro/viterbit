@@ -1,9 +1,11 @@
 /*
- * Welcome to your app's main JavaScript file!
- *
- * This file will be included onto the page via the importmap() Twig function,
- * which should already be in your base.html.twig.
+ * Entry point loaded on every page through the importmap (no bundler, no framework).
  */
 import './styles/app.css';
+import { initLiveRegions } from './js/live.js';
+import { initToasts } from './js/toasts.js';
+import { focusFirstInvalidField } from './js/forms.js';
 
-console.log('This log comes from assets/app.js - welcome to AssetMapper! 🎉');
+initLiveRegions(document);
+initToasts(document);
+focusFirstInvalidField(document);
