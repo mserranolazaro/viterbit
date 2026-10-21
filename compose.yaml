@@ -1,7 +1,11 @@
 name: viterbit-ats
 
 x-php: &php
-  build: docker/php
+  build:
+    context: docker/php
+    args:
+      UID: ${HOST_UID:-1000}
+      GID: ${HOST_GID:-1000}
   image: viterbit-ats-php:local
   volumes:
     - .:/var/www/app

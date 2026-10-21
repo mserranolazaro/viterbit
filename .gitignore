@@ -24,3 +24,7 @@
 /.phpunit.cache/
 ###< phpunit/phpunit ###
 .phpcs-cache
+
+###> IDE ###
+/.idea/
+###< IDE ###

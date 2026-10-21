@@ -1,3 +1,7 @@
+# The containers write to the bind-mounted project as the host user.
+export HOST_UID := $(shell id -u)
+export HOST_GID := $(shell id -g)
+
 DC  = docker compose
 PHP = $(DC) exec -T php
 
