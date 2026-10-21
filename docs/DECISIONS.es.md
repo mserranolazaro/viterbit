@@ -187,6 +187,19 @@ tabla completa de transiciones.
 - **`Position` no hereda de `AggregateRoot`.** Esa clase base solo recoge eventos, y los puestos
   todavía no registran ninguno.
 
+**El texto que escribe la gente se normaliza una sola vez, en el dominio** (`SharedKernel\Domain\Value\Text`):
+- *Nombres:* se eliminan los caracteres invisibles y de control y se colapsan los espacios, así
+  que un nombre hecho de espacios de ancho cero cuenta como vacío.
+- *CVs y notas:* los saltos de línea pasan a ser `\n` (los navegadores envían `\r\n`, que
+  contaría el doble contra el límite de 20.000 caracteres), y se eliminan los caracteres de
+  control salvo tabuladores y saltos de línea.
+- *Formulario:* aplica la misma normalización antes de validar, así que las dos capas cuentan
+  los mismos caracteres.
+
+**Una candidatura por candidato y puesto.** Se comprueba en el caso de uso (`existsForCandidate`)
+y la impone un índice único para los envíos que llegan a la vez. Un doble clic, una recarga o un
+reintento tras un error nunca crean una segunda candidatura (ADR-016).
+
 ## ADR-007 · Eventos ligeros y una proyección que relee el agregado
 
 **Decisión.** Los eventos de dominio llevan el id del agregado y los datos que han cambiado
@@ -374,6 +387,21 @@ repara el modelo de lectura y reenviar `EnrichJobApplicationCommand` repara el e
 - *Un solo transport para todo*: una llamada a la IA lenta o fallida retrasaría todas las
   proyecciones que tuviera detrás.
 
+**Doble escritura: mitigada, no eliminada.** La pasada de QA convirtió el riesgo de la doble
+escritura en un bug real: con RabbitMQ caído, postularse devolvía un 500 aunque la candidatura ya
+estaba guardada, y se quedaba huérfana. Lo resuelven dos cambios:
+- *El publisher ya no hace fallar un cambio guardado.* La caída del broker se registra en el log
+  y el usuario ve su candidatura.
+- *Un reconciliador, que Symfony Scheduler ejecuta cada minuto en `worker-events`.* Busca las
+  candidaturas que siguen en `received` o `enriching` después de 2 minutos, vuelve a proyectar su
+  vista y vuelve a pedir su enriquecimiento. Funciona porque las proyecciones releen el agregado
+  (ADR-007), así que un evento perdido no pierde nada que no se pueda reconstruir; los dos pasos
+  son idempotentes. Comprobado en vivo: una candidatura enviada con RabbitMQ parado pasó sola a
+  `enriched` unos 2 minutos después de que volviera el broker.
+
+Un outbox transaccional seguiría siendo la solución completa (entrega garantizada e inmediata). El
+reconciliador es la red de seguridad barata, que además cubre cualquier otro mensaje perdido.
+
 ## ADR-012 · Reintentos y fallo definitivo
 
 **Decisión.**
@@ -490,6 +518,26 @@ compilada). Así queda demostrado que un clon limpio construye, arranca, pasa lo
 calidad y pasa los tests. Antes de esto, CI se saltaba la compilación del CSS y fallaba con un
 checkout limpio.
 
+**Tests de aceptación en un navegador real.** Los tests funcionales no ejecutan JavaScript, así
+que los filtros en vivo, el polling y la protección contra el doble envío solo se habían
+comprobado a mano. La suite `acceptance` los cubre:
+- *Cómo se ejecuta:* Symfony Panther controla un Chrome real (el servicio `selenium`, con la
+  imagen fijada) contra el stack en marcha a través de Caddy, con los workers, RabbitMQ y MongoDB
+  reales detrás.
+- *Qué comprueba:* los criterios de aceptación del ejercicio tal como los vive un usuario. Un
+  candidato se postula y ve llegar el score sin recargar; un recruiter busca y filtra sin salir
+  de la página; un cribado que falla queda marcado; un doble clic envía una sola candidatura; un
+  refresco fallido lo dice y se recupera.
+- *Aislamiento:* cada test usa sus propios candidatos y los borra, así que se puede ejecutar
+  contra un stack que ya tiene datos.
+- *Dónde se ejecuta:* `make acceptance`, y en CI después de las demás suites.
+
+**La cobertura es un control, no un informe.** `make coverage` ejecuta la suite por defecto con
+PCOV y falla por debajo del 90 % de líneas o de métodos (`resources/ci/check-coverage.php`); CI lo
+ejecuta. Cifras actuales: 99,2 % de líneas y 96,5 % de métodos. Las pocas líneas sin cubrir son
+ramas defensivas, listadas en `docs/QA.es.md`. El arranque del framework (`Kernel.php`) queda
+excluido.
+
 ## ADR-015 · UI: páginas renderizadas en servidor que se actualizan en el sitio
 
 **Decisión.**
@@ -557,6 +605,18 @@ ejercicio).
   del importmap, que la Content-Security-Policy bloquea con razón (ADR-016). Hay un test que lo
   vigila.
 
+**Endurecida tras la pasada de QA (docs/QA.es.md).**
+- *Refrescos fallidos:* un refresco que falla lo dice («no se pudo actualizar», con reintento),
+  en lugar de dejar resultados antiguos bajo filtros nuevos.
+- *Filtros tolerantes:* los valores ilegibles (`page=abc`, parámetros en forma de array) se
+  ignoran, como se prometía, en lugar de responder 400. Una página más allá del final lo dice y
+  enlaza a la primera.
+- *Doble envío:* el formulario se envía una sola vez aunque se haga doble clic (de todos modos, el
+  servidor rechaza los duplicados).
+- *Maquetación:* los nombres y resúmenes muy largos sin espacios se parten en lugar de ensanchar
+  la página en el móvil (`overflow-wrap: anywhere`, y `minmax(0, 1fr)` en las rejillas que
+  crecían con su contenido).
+
 ## ADR-016 · Seguridad y privacidad de un formulario público de candidatura
 
 **Contexto.** El formulario de candidatura es público, anónimo y recibe datos personales (un CV),
@@ -599,3 +659,13 @@ y cada envío cuesta una llamada a la IA. Los clientes de Viterbit están sujeto
 - *CAPTCHA:* más fricción para todos los candidatos. El límite de peticiones cubre el riesgo de
   coste en un PoC; en producción añadiría una prueba de trabajo respetuosa con la privacidad (por
   ejemplo ALTCHA) si apareciera abuso.
+
+**Más endurecimiento tras la pasada de QA.**
+- **Tamaño de las peticiones:** Caddy rechaza los cuerpos de más de 1 MB con un 413 antes de que
+  PHP los procese. PHP nunca escribe avisos en las respuestas (`display_errors=Off`); un POST
+  demasiado grande rompía las cabeceras y devolvía un 500.
+- **Duplicados:** una candidatura por email y puesto (ADR-006), con un mensaje claro en el
+  formulario. El mensaje le dice a quien acaba de escribir el email que ya se ha usado para este
+  puesto; se acepta, porque el límite de peticiones hace impracticable ir probando emails.
+- **Caídas del broker:** no se pierden candidaturas (ADR-011).
+

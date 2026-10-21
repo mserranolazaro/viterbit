@@ -181,6 +181,19 @@ transition table.
 - **`Position` does not extend `AggregateRoot`.** That base class only collects events, and
   positions record none yet.
 
+**Text typed by people is normalised once, in the domain** (`SharedKernel\Domain\Value\Text`):
+- *Names:* invisible and control characters are removed and whitespace is collapsed, so a
+  name made of zero-width spaces is treated as empty.
+- *CVs and notes:* line breaks become `\n` (browsers send `\r\n`, which would count twice
+  against the 20,000-character limit), and control characters other than tabs and line breaks
+  are removed.
+- *The form:* it applies the same normalisation before validating, so both layers count the
+  same characters.
+
+**One application per candidate and position.** This is checked in the use case
+(`existsForCandidate`) and enforced by a unique index for submissions that race. A double
+click, a refresh or a retry after an error never creates a second application (ADR-016).
+
 ## ADR-007 · Lean events, and a projection that re-reads the aggregate
 
 **Decision.** Domain events carry the aggregate id and the facts that changed (the position
@@ -354,6 +367,21 @@ re-sending `EnrichJobApplicationCommand` repairs the enrichment.
 - *One transport for everything*: one slow or failing AI call would delay every projection
   behind it.
 
+**Dual write: mitigated, not removed.** The QA pass turned the dual-write risk into a real
+bug: with RabbitMQ down, applying returned a 500 while the application was already saved and
+then left orphaned. Two changes fix it:
+- *The publisher no longer fails a saved change.* A broker outage is logged, and the user sees
+  their application.
+- *A reconciler, run every minute by Symfony Scheduler on `worker-events`.* It finds
+  applications still `received` or `enriching` after 2 minutes, re-projects their view and
+  requests their enrichment again. This works because projections re-read the aggregate
+  (ADR-007), so a lost event loses nothing that cannot be rebuilt; both steps are idempotent.
+  Verified live: an application submitted with RabbitMQ stopped became `enriched` on its own
+  about 2 minutes after the broker came back.
+
+A transactional outbox would still be the complete solution (guaranteed, immediate
+delivery). The reconciler is the cheap safety net that also covers any other lost message.
+
 ## ADR-012 · Retries and the final failure
 
 **Decision.**
@@ -461,6 +489,24 @@ the projections, which shows a listed application still waiting for the AI.
 clean clone is therefore proven to build, start, pass quality checks and pass the tests. Before
 this, CI skipped the CSS build and failed on a clean checkout.
 
+**Acceptance tests in a real browser.** Functional tests do not run JavaScript, so the live
+filters, polling and double-submit protection were only checked by hand. The `acceptance` suite
+covers them:
+- *How it runs:* Symfony Panther drives a real Chrome (the `selenium` service, pinned image)
+  against the running stack through Caddy, with the real workers, RabbitMQ and MongoDB behind it.
+- *What it checks:* the exercise's acceptance criteria as a user experiences them. A candidate
+  applies and watches the score arrive without reloading; a recruiter searches and filters in
+  place; a failing screening is flagged; a double click sends one application; a failed refresh
+  says so and recovers.
+- *Isolation:* each test uses its own candidates and removes them, so it runs against a stack
+  that already has data.
+- *Where it runs:* `make acceptance`, and in CI after the other suites.
+
+**Coverage is a gate, not a report.** `make coverage` runs the default suite with PCOV and
+fails below 90 % of lines or methods (`resources/ci/check-coverage.php`); CI runs it. Current
+figures: 99.2 % of lines, 96.5 % of methods. The few lines left uncovered are defensive
+branches, listed in `docs/QA.md`. Framework bootstrap (`Kernel.php`) is excluded.
+
 ## ADR-015 · UI: server-rendered pages that update in place
 
 **Decision.**
@@ -522,6 +568,16 @@ internationalisation (the UI is English), and file uploads (forbidden by the exe
   importmap, which the Content-Security-Policy rightly blocks (ADR-016). A test guards against
   this.
 
+**Hardened after the QA pass (docs/QA.md).**
+- *Failed refreshes:* a refresh that fails says so ("could not update", with a retry), instead
+  of leaving stale results under new filters.
+- *Lenient filters:* unreadable values (`page=abc`, array parameters) are ignored as promised,
+  instead of answering 400. A page past the end says so and links back to the first page.
+- *Double submit:* the form sends once even on a double click (the server refuses duplicates
+  anyway).
+- *Layout:* very long unbroken names and summaries wrap instead of widening the page on a phone
+  (`overflow-wrap: anywhere`, and `minmax(0, 1fr)` on grids that grew with their content).
+
 ## ADR-016 · Security and privacy of a public application form
 
 **Context.** The apply form is public, anonymous and accepts personal data (a CV), and every
@@ -561,3 +617,13 @@ submission costs an AI call. Viterbit's customers are subject to GDPR.
   in the app can be asserted in functional tests.
 - *CAPTCHA:* more friction for every candidate. Rate limiting covers the cost risk of a PoC; in
   production I would add a privacy-friendly proof-of-work (e.g. ALTCHA) if abuse appeared.
+
+**More hardening from the QA pass.**
+- **Request size:** Caddy refuses bodies over 1 MB with 413 before PHP parses them. PHP never
+  prints warnings into responses (`display_errors=Off`); an oversized POST used to break the
+  headers and return a 500.
+- **Duplicates:** one application per email and position (ADR-006), with a clear message on the
+  form. The message tells the person who just typed the email that it has already been used for
+  this position; that is accepted, because the rate limit makes probing for emails impractical.
+- **Broker outages:** these do not lose applications (ADR-011).
+

@@ -35,6 +35,8 @@ Then:
 ```bash
 make demo      # submit 7 sample applications and watch them get enriched live
 make test      # unit, integration and functional tests (real MongoDB)
+make coverage  # the same with coverage; fails under 90 % (HTML in var/coverage/html)
+make acceptance # acceptance tests in a real Chrome against the running stack
 make qa        # php-cs-fixer, phpcs (PSR-12), PHPStan level 8
 make security  # fails if PHP is older than the last security release
 make logs      # follow the workers
@@ -139,24 +141,31 @@ The ones most worth discussing:
 | HTML fragments and polling instead of a SPA | One renderer, no build chain, works without JS | 015 |
 | Security and privacy: rate limit, nonce-based CSP, explicit consent, ids-only messages | A public form taking CVs: abuse, XSS and GDPR are the real risks | 016 |
 | Patched runtime: Symfony 8.1, PHP pinned to 8.4.27, CVE guard in CI | 8.0 is unpatched; php2shell (CVE-2026-109618/9) was published during the exercise | 002, 004 |
+| A broker outage loses nothing: the publisher logs, a scheduled reconciler re-drives | Applying still works with RabbitMQ down; stuck applications recover on their own | 011 |
 
 ## Tests
 
-129 tests: unit tests (domain, use cases with doubles of the ports, AI adapter), integration
-tests (MongoDB repositories, the full asynchronous flow with a real worker, the rebuild
-command) and functional tests (the HTTP flows).
+**184 tests** in the default suite (`make test`), plus **6 acceptance tests** in a real browser (`make acceptance`):
+- *Unit:* the domain, the use cases with doubles of the ports, the AI adapter and the listeners.
+- *Integration:* real MongoDB, the full asynchronous flow with a real Messenger worker, and the
+  console commands.
+- *Functional:* the HTTP flows, CSRF included.
+- *Acceptance:* a real Chrome against the running stack (workers, RabbitMQ, JavaScript).
+
+**Coverage: 99.2 % of lines, 96.5 % of methods.** CI fails below 90 %.
+
+A QA pass tried to break the app on purpose (HTTP abuse, edge inputs, the browser, RabbitMQ
+going down). The findings, their fixes and the tests that guard them are in
+**[docs/QA.md](docs/QA.md)**.
 
 | Acceptance criterion | Covered by |
 |---|---|
-| Submitting creates a record with `appliedAt` and the default status | `SubmitJobApplicationHandlerTest`, `ApplyToAPositionTest` |
-| Asynchronous enrichment adds a summary and a score | `EnrichmentFlowTest`, `ApplyToAPositionTest` |
-| Retries and the final failure | `EnrichmentFlowTest`, `ApplyToAPositionTest::testAFailedEnrichmentIsExplainedOnTheDetailPage` |
-| The list is newest first, with filters and search | `MongoJobApplicationViewRepositoryTest`, `BrowseApplicationsTest` |
-| The detail view shows all the data, including the enrichment | `ApplyToAPositionTest` |
-| Consent, rate limiting and security headers | `ApplyToAPositionTest`, `SecurityHeadersTest` |
-| A stale projection never overwrites a newer view | `MongoJobApplicationViewRepositoryTest` |
-
-The JavaScript has no automated tests: it is checked by hand in the browser (see "With more time").
+| Submitting creates a record with `appliedAt` and the default status | `SubmitJobApplicationHandlerTest`, `ApplyToAPositionTest`, acceptance `ApplyAndGetScreenedTest` |
+| Asynchronous enrichment adds a summary and a score | `EnrichmentFlowTest`, acceptance `ApplyAndGetScreenedTest` (the score appears without reloading) |
+| Retries, the final failure, and recovery from a broker outage | `EnrichmentFlowTest`, `ReconcileJobApplicationsHandlerTest`, `MessengerDomainEventPublisherTest` |
+| The list is newest first, with real-time filters and search | `MongoJobApplicationViewRepositoryTest`, `BrowseApplicationsTest`, acceptance `BrowseApplicationsLiveTest` |
+| The detail view shows all the data, including the enrichment | `ApplyToAPositionTest`, acceptance `ApplyAndGetScreenedTest` |
+| Consent, rate limit, duplicates, security headers | `ApplyToAPositionTest`, `SecurityHeadersTest`, `SubmitJobApplicationHandlerTest` |
 
 ## With more time
 
@@ -166,7 +175,6 @@ The JavaScript has no automated tests: it is checked by hand in the browser (see
 - **A real LLM client** behind `LlmClient`, with timeouts, rate limiting and cost tracking, and
   the provider's structured output fed with the same JSON Schema.
 - **Authentication and roles**, separating the candidate and recruiter areas.
-- **Browser end-to-end tests** (Playwright) for the live filters and polling.
 - **Retention and the right to erasure** (GDPR): delete or anonymise a candidate's data on request and after a retention period (ADR-016).
 - **Optimistic locking on the write model**, once more than one writer can touch an application. The version is already there (ADR-010).
 - **Observability:** structured logs with correlation ids across HTTP, events and enrichment, and metrics on queue depth, AI latency and failure rate.
@@ -203,4 +211,8 @@ infrastructure, UI and docs.
   - no CSP;
   - accessibility noise from polling;
   - and smaller polish.
+- **QA:** a QA pass tried to break the app (HTTP abuse, edge inputs, the browser, the broker
+  going down) and found 10 issues, the worst being a 500 and an orphaned application when
+  RabbitMQ was down. All 10 were fixed with regression tests, and a browser acceptance suite and
+  a coverage gate were added (docs/QA.md).
 - **Docs:** `docs/DECISIONS.md` was written alongside the code, one entry per decision.

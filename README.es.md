@@ -35,6 +35,8 @@ Después:
 ```bash
 make demo      # envía 7 candidaturas de ejemplo y se ve en directo cómo se enriquecen
 make test      # tests unitarios, de integración y funcionales (contra MongoDB real)
+make coverage  # lo mismo con cobertura; falla por debajo del 90 % (HTML en var/coverage/html)
+make acceptance # tests de aceptación en un Chrome real contra el stack en marcha
 make qa        # php-cs-fixer, phpcs (PSR-12), PHPStan nivel 8
 make security  # falla si PHP es anterior a la última release de seguridad
 make logs      # sigue los logs de los workers
@@ -140,24 +142,32 @@ Las que más dan para hablar:
 | Fragmentos HTML y polling en lugar de una SPA | Un solo renderizador, sin cadena de build, funciona sin JS | 015 |
 | Seguridad y privacidad: límite de peticiones, CSP con nonce, consentimiento explícito, mensajes solo con ids | Un formulario público que recibe CVs: abuso, XSS y RGPD son los riesgos reales | 016 |
 | Runtime parcheado: Symfony 8.1, PHP fijado en 8.4.27, control de CVE en CI | La 8.0 no tiene parches; php2shell (CVE-2026-109618/9) salió durante el ejercicio | 002, 004 |
+| Una caída del broker no pierde nada: el publisher lo registra y un reconciliador programado lo reconduce | Postularse sigue funcionando con RabbitMQ caído; las candidaturas atascadas se recuperan solas | 011 |
 
 ## Tests
 
-129 tests: unitarios (dominio, casos de uso con dobles de los puertos, adaptador de IA), de
-integración (repositorios de MongoDB, el flujo asíncrono completo con un worker real, el comando
-de reconstrucción) y funcionales (los flujos HTTP).
+**184 tests** en la suite por defecto (`make test`), más **6 tests de aceptación** en un navegador real (`make acceptance`):
+- *Unitarios:* el dominio, los casos de uso con dobles de los puertos, el adaptador de IA y los
+  listeners.
+- *Integración:* MongoDB real, el flujo asíncrono completo con un worker real de Messenger y los
+  comandos de consola.
+- *Funcionales:* los flujos HTTP, con CSRF incluido.
+- *Aceptación:* un Chrome real contra el stack en marcha (workers, RabbitMQ y JavaScript).
+
+**Cobertura: 99,2 % de líneas y 96,5 % de métodos.** CI falla por debajo del 90 %.
+
+Una pasada de QA intentó romper la app a propósito (abuso por HTTP, entradas extremas, el
+navegador, la caída de RabbitMQ). Los hallazgos, sus arreglos y los tests que los vigilan están
+en **[docs/QA.es.md](docs/QA.es.md)**.
 
 | Criterio de aceptación | Lo cubre |
 |---|---|
-| Al enviar se crea un registro con `appliedAt` y el estado por defecto | `SubmitJobApplicationHandlerTest`, `ApplyToAPositionTest` |
-| El enriquecimiento asíncrono añade resumen y score | `EnrichmentFlowTest`, `ApplyToAPositionTest` |
-| Reintentos y fallo definitivo | `EnrichmentFlowTest`, `ApplyToAPositionTest::testAFailedEnrichmentIsExplainedOnTheDetailPage` |
-| El listado va de más reciente a más antigua, con filtros y búsqueda | `MongoJobApplicationViewRepositoryTest`, `BrowseApplicationsTest` |
-| El detalle muestra todos los datos, enriquecimiento incluido | `ApplyToAPositionTest` |
-| Consentimiento, límite de peticiones y cabeceras de seguridad | `ApplyToAPositionTest`, `SecurityHeadersTest` |
-| Una proyección antigua nunca sobrescribe una vista más reciente | `MongoJobApplicationViewRepositoryTest` |
-
-El JavaScript no tiene tests automáticos: se ha comprobado a mano en el navegador (ver «Con más tiempo»).
+| Al enviar se crea un registro con `appliedAt` y el estado por defecto | `SubmitJobApplicationHandlerTest`, `ApplyToAPositionTest`, aceptación `ApplyAndGetScreenedTest` |
+| El enriquecimiento asíncrono añade resumen y score | `EnrichmentFlowTest`, aceptación `ApplyAndGetScreenedTest` (el score aparece sin recargar) |
+| Reintentos, fallo definitivo y recuperación tras una caída del broker | `EnrichmentFlowTest`, `ReconcileJobApplicationsHandlerTest`, `MessengerDomainEventPublisherTest` |
+| El listado va de más reciente a más antigua, con filtros y búsqueda en tiempo real | `MongoJobApplicationViewRepositoryTest`, `BrowseApplicationsTest`, aceptación `BrowseApplicationsLiveTest` |
+| El detalle muestra todos los datos, enriquecimiento incluido | `ApplyToAPositionTest`, aceptación `ApplyAndGetScreenedTest` |
+| Consentimiento, límite de peticiones, duplicados y cabeceras de seguridad | `ApplyToAPositionTest`, `SecurityHeadersTest`, `SubmitJobApplicationHandlerTest` |
 
 ## Con más tiempo
 
@@ -167,7 +177,6 @@ El JavaScript no tiene tests automáticos: se ha comprobado a mano en el navegad
 - **Un cliente de LLM real** detrás de `LlmClient`, con timeouts, límite de peticiones y control
   de coste, y la salida estructurada del proveedor alimentada con el mismo JSON Schema.
 - **Autenticación y roles**, separando la zona de candidatos de la de recruiters.
-- **Tests end-to-end en navegador** (Playwright) para los filtros en vivo y el polling.
 - **Conservación y derecho de supresión** (RGPD): borrar o anonimizar los datos de un candidato cuando lo pida y al vencer un plazo de conservación (ADR-016).
 - **Bloqueo optimista en el modelo de escritura**, cuando más de un escritor pueda tocar una candidatura. La versión ya existe (ADR-010).
 - **Observabilidad:** logs estructurados con ids de correlación entre HTTP, eventos y enriquecimiento, y métricas de profundidad de cola, latencia de la IA y tasa de fallos.
@@ -204,4 +213,8 @@ infraestructura, UI y documentación.
   - no había CSP;
   - el polling generaba ruido de accesibilidad;
   - y pulidos menores.
+- **QA:** una pasada de QA intentó romper la app (abuso por HTTP, entradas extremas, el navegador,
+  la caída del broker) y encontró 10 fallos; el peor, un 500 y una candidatura huérfana con
+  RabbitMQ caído. Se arreglaron los 10 con tests de regresión, y se añadieron una suite de
+  aceptación en navegador y un control de cobertura (docs/QA.es.md).
 - **Documentación:** `docs/DECISIONS.es.md` se escribió a la vez que el código, una entrada por decisión.
