@@ -14,9 +14,16 @@ init: ## Build, start everything, install dependencies and load sample positions
 	$(DC) --profile worker up -d worker
 	@echo "\n  Ready: http://localhost:8080  ·  RabbitMQ: http://localhost:15673 (guest/guest)\n"
 
-setup: ## Create MongoDB indexes and load the sample positions
+setup: ## Create MongoDB indexes, load the sample positions and build the CSS
 	$(PHP) bin/console app:mongo:setup
 	$(PHP) bin/console app:positions:seed
+	$(PHP) bin/console tailwind:build
+
+demo: ## Submit sample applications (enriched asynchronously by the worker)
+	$(PHP) bin/console app:demo:applications
+
+css: ## Rebuild the CSS on every template change
+	$(DC) exec php bin/console tailwind:build --watch
 
 up: ## Start containers (including the worker)
 	$(DC) --profile worker up -d
@@ -39,4 +46,4 @@ qa: ## Code style and static analysis
 hooks: ## Install the git pre-commit hook
 	git config core.hooksPath resources/git/hooks
 
-.PHONY: help init setup up down logs sh test qa hooks
+.PHONY: help init setup demo css up down logs sh test qa hooks
