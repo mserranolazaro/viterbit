@@ -6,13 +6,13 @@ namespace App\Recruitment\Domain\Write\Aggregate\Root\Position;
 
 use App\Recruitment\Domain\Write\Aggregate\Value\Position\PositionId;
 use App\Recruitment\Domain\Write\Aggregate\Value\Position\Requirement;
-use App\SharedKernel\Domain\Aggregate\AggregateRoot;
 
 /**
  * A job opening candidates apply to. Master data: loaded by the seed command and
- * read-only in this PoC, so it records no events.
+ * read-only in this PoC. It records no events, so it does not extend AggregateRoot
+ * (whose only job is collecting events); it would once positions can be edited.
  */
-final class Position extends AggregateRoot
+final class Position
 {
     /**
      * @param Requirement[] $requirements
