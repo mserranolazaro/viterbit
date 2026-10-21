@@ -1,0 +1,97 @@
+{
+    "type": "project",
+    "license": "proprietary",
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "require": {
+        "php": ">=8.4",
+        "ext-ctype": "*",
+        "ext-iconv": "*",
+        "mongodb/mongodb": "^2.5",
+        "opis/json-schema": "^2.6",
+        "symfony/amqp-messenger": "8.1.*",
+        "symfony/asset": "8.1.*",
+        "symfony/clock": "8.1.*",
+        "symfony/console": "8.1.*",
+        "symfony/dotenv": "8.1.*",
+        "symfony/flex": "^2",
+        "symfony/framework-bundle": "8.1.*",
+        "symfony/messenger": "8.1.*",
+        "symfony/monolog-bundle": "^4.1",
+        "symfony/runtime": "8.1.*",
+        "symfony/twig-bundle": "8.1.*",
+        "symfony/uid": "8.1.*",
+        "symfony/validator": "8.1.*",
+        "symfony/yaml": "8.1.*",
+        "symfonycasts/tailwind-bundle": "^1.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true,
+            "symfony/flex": true,
+            "symfony/runtime": true
+        },
+        "bump-after-update": true,
+        "sort-packages": true
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "App\\Tests\\": "tests/"
+        }
+    },
+    "replace": {
+        "symfony/polyfill-ctype": "*",
+        "symfony/polyfill-iconv": "*",
+        "symfony/polyfill-php72": "*",
+        "symfony/polyfill-php73": "*",
+        "symfony/polyfill-php74": "*",
+        "symfony/polyfill-php80": "*",
+        "symfony/polyfill-php81": "*",
+        "symfony/polyfill-php82": "*",
+        "symfony/polyfill-php83": "*",
+        "symfony/polyfill-php84": "*"
+    },
+    "scripts": {
+        "auto-scripts": {
+            "cache:clear": "symfony-cmd",
+            "assets:install %PUBLIC_DIR%": "symfony-cmd",
+            "importmap:install": "symfony-cmd"
+        },
+        "post-install-cmd": [
+            "@auto-scripts"
+        ],
+        "post-update-cmd": [
+            "@auto-scripts"
+        ],
+        "test": "phpunit --no-coverage",
+        "qa": [
+            "php-cs-fixer fix --dry-run --diff",
+            "phpcs",
+            "phpstan analyse --no-progress --memory-limit=512M"
+        ]
+    },
+    "conflict": {
+        "symfony/symfony": "*"
+    },
+    "extra": {
+        "symfony": {
+            "allow-contrib": false,
+            "require": "8.1.*"
+        }
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "phpstan/phpstan": "^2.3",
+        "phpunit/phpunit": "^13.4",
+        "squizlabs/php_codesniffer": "^4.0",
+        "symfony/browser-kit": "8.1.*",
+        "symfony/css-selector": "8.1.*"
+    },
+    "name": "mserrano/viterbit-ats",
+    "description": "ATS proof of concept for the Viterbit technical exercise"
+}
